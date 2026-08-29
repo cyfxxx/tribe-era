@@ -139,6 +139,41 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 #log .log-line.good { color: var(--ok); }
 #log .log-line .log-day { color: var(--text-dim); margin-right: 5px; }
 
+/* 营地场景 */
+#camp {
+  display: block;
+  width: 100%;
+  max-width: 1100px;
+  margin: 8px auto 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+/* 季节标签 */
+#season-tag { color: var(--accent); font-size: 13px; margin-right: 4px; font-weight: 600; }
+#season-tag.spring { color: #8fbb62; }
+#season-tag.summer { color: #d9a24a; }
+#season-tag.autumn { color: #c97e3a; }
+#season-tag.winter { color: #9fb4c4; }
+button.toggle.on { background: var(--ok); color: #23231d; border-color: var(--ok); }
+.race-badge, .region-badge {
+  display: inline-block; padding: 0 6px; border: 1px solid var(--accent);
+  border-radius: 3px; color: var(--accent); font-size: 12px;
+}
+
+/* 开局选择 */
+.card-box.setup { max-width: 720px; }
+.world-canvas { width: 100%; border-radius: 6px; cursor: crosshair; margin-bottom: 12px; }
+.race-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.race-card {
+  border: 1px solid var(--locked); border-radius: 5px; padding: 8px; cursor: pointer;
+}
+.race-card b { color: var(--accent); }
+.race-card .epithet { color: var(--info); font-size: 12px; margin-left: 6px; }
+.race-card p { margin: 4px 0 0; font-size: 12px; color: var(--text-dim); }
+.race-card.picked { border-color: var(--accent); background: rgba(217, 162, 74, 0.08); }
+
 /* 弹层：见识卡 / 图鉴 / 确认 */
 #overlay {
   position: fixed; inset: 0; z-index: 100;

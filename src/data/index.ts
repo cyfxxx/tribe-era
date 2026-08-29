@@ -1,12 +1,14 @@
 // 内容包汇总：新内容 = 在对应 pack 目录加数据文件 + 在此注册
-// 校验在启动时执行，引用断裂立即报错（防频繁添加内容时埋雷）
-import { registerAll, validateAll, type ValidationError } from '../core/registry'
+// 流程：注册全部内容包 → 应用声明式补丁（Tier 2）→ 校验引用完整性
+import { registerAll, validateAll, all, type ValidationError } from '../core/registry'
+import { applyPatches, type PatchConflict } from '../core/patches'
 import { RESOURCES } from './resources'
-import { TECHS } from './techs'
-import { RECIPES, TRIALS } from './recipes'
-import { BUILDINGS } from './buildings'
+import { TECHS, TECH_MAP } from './techs'
+import { RECIPES, TRIALS, RECIPE_MAP, TRIAL_MAP } from './recipes'
+import { BUILDINGS, BUILDING_MAP } from './buildings'
 import { registerRaces } from '../core/races'
 import { registerRegions } from '../core/world'
+import { EXAMPLE_PATCHES } from './patches.example'
 
 export const PACK_BUILTIN = 'builtin'
 
@@ -24,7 +26,32 @@ export function registerAllContent(): void {
   registered = true
 }
 
-export function validateContent(): ValidationError[] {
+/** 补丁应用后同步静态查询表（sim/UI 读 Map，registry 是唯一事实源） */
+function syncMaps(): void {
+  const pairs: [Parameters<typeof all>[0], Map<string, unknown>][] = [
+    ['tech', TECH_MAP], ['recipe', RECIPE_MAP], ['trial', TRIAL_MAP], ['building', BUILDING_MAP],
+  ]
+  for (const [kind, map] of pairs) {
+    map.clear()
+    for (const d of all(kind)) map.set(d.id, d)
+  }
+}
+
+export interface ContentReport {
+  errors: ValidationError[]
+  patchApplied: number
+  patchConflicts: PatchConflict[]
+  patchErrors: string[]
+}
+
+export function validateContent(): ContentReport {
   registerAllContent()
-  return validateAll()
+  const patchResult = applyPatches(EXAMPLE_PATCHES)
+  syncMaps()
+  return {
+    errors: validateAll(),
+    patchApplied: patchResult.applied,
+    patchConflicts: patchResult.conflicts,
+    patchErrors: patchResult.errors,
+  }
 }

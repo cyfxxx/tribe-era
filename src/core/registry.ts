@@ -4,7 +4,7 @@ export type ContentKind =
   | 'resource' | 'tech' | 'recipe' | 'trial' | 'building'
   | 'race' | 'region' | 'event'
 
-export interface ContentDef { id: string; pack?: string }
+export interface ContentDef { id: string; pack?: string; name?: string }
 
 type RegistryMap = Map<ContentKind, Map<string, ContentDef>>
 
@@ -15,6 +15,13 @@ export function register<T extends ContentDef>(kind: ContentKind, def: T): T {
   const m = registries.get(kind)!
   if (m.has(def.id)) throw new Error(`[registry] 重复注册 ${kind}:${def.id}`)
   m.set(def.id, def)
+  return def
+}
+
+/** 补丁系统专用：覆盖注册（仅 patches.ts 调用） */
+export function forceRegister<T extends ContentDef>(kind: ContentKind, def: T): T {
+  if (!registries.has(kind)) registries.set(kind, new Map())
+  registries.get(kind)!.set(def.id, def)
   return def
 }
 

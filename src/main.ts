@@ -1,28 +1,41 @@
-// UI 层：DOM 灰盒，状态每 500ms 全量刷新（量小无性能问题）
+// UI 层：状态每 500ms 全量刷新（量小无性能问题）
 import {
-  createInitialState, tick, pushLog, popCap, resCap, foodBurn, admitCost,
+  createInitialState, tick, pushLog, popCap, resCap, foodBurn, admitCost, raceMult, jobAvailable,
   canResearch, research, canBuild, build,
   canStartRecipe, startRecipe, canStartTrial, startTrial,
-  admitPop, assignJob, JOBS, type GameState,
+  admitPop, assignJob, JOBS, seasonOfNow, MIRACLES, canMiracle, doMiracle,
+  canStartExpedition, startExpedition, type GameState,
 } from './sim'
 import { RES_MAP } from './data/resources'
-import { TECHS, TECH_MAP, LINE_NAMES, type TechLine } from './data/techs'
-import { BUILDINGS } from './data/buildings'
-import { RECIPES, TRIALS, RECIPE_MAP, TRIAL_MAP } from './data/recipes'
+import { TECH_MAP, LINE_NAMES, type TechLine } from './data/techs'
+import type { Tech } from './data/techs'
+import { all } from './core/registry'
+import type { BuildingDef } from './data/buildings'
+import { TRIALS, RECIPE_MAP, TRIAL_MAP } from './data/recipes'
+import type { Recipe } from './data/recipes'
 import { saveGame, loadGame, exportSave, importSave, clearSave } from './state'
 import { validateContent } from './data'
+import { RACES } from './core/races'
+import { START_REGIONS, WORLD, REGION_MAP } from './core/world'
+import { TIME, SEASON_MODS } from './core/seasons'
+import { drawWorld, hitRegion } from './ui/worldmap'
+import { drawCamp } from './ui/campview'
 
-// 启动校验：引用断裂立即报错（频繁添加内容时的安全网）
-const errs = validateContent()
-if (errs.length > 0) {
-  console.error('[content] 校验失败：', errs)
-  document.body.innerHTML = `<pre style="color:#c06453;padding:20px">内容校验失败：\n${errs.map(e => `${e.kind}:${e.id} — ${e.problem}`).join('\n')}</pre>`
+// ── 启动校验：引用断裂立即报错 ──────────────────────────────
+const report = validateContent()
+if (report.errors.length > 0) {
+  document.body.innerHTML = `<pre style="color:#c06453;padding:20px">内容校验失败：\n${report.errors.map(e => `${e.kind}:${e.id} — ${e.problem}`).join('\n')}</pre>`
   throw new Error('content validation failed')
 }
+if (report.patchErrors.length > 0) console.warn('[patches]', report.patchErrors)
+if (report.patchConflicts.length > 0) console.warn('[patches] 冲突：', report.patchConflicts)
 
-let st: GameState = loadGame() ?? createInitialState()
+let st: GameState | null = loadGame()
+if (st && (!st.raceId || !st.regionId)) st = null // 旧档无开局信息：引导重开（可先导出旧档）
+const THE_ST = () => st as GameState
 
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T
+const VERSION = 'v0.2'
 
 // ── 弹层 ─────────────────────────────────────────────────────
 function showOverlay(inner: HTMLElement): void {
@@ -55,16 +68,84 @@ function showTechCard(techId: string): void {
   showOverlay(cardBox(tech.card.title, `${LINE_NAMES[tech.line]} · 见识卡`, tech.card.text, [btn]))
 }
 
+// ── 开局选择（神明创造世界）─────────────────────────────────
+function showSetup(): void {
+  const ov = $('#overlay')
+  ov.classList.remove('hidden')
+  ov.innerHTML = ''
+  const box = document.createElement('div')
+  box.className = 'card-box setup'
+  box.innerHTML = `<h3>创世 · 选择引导的种族与发源地</h3>
+    <div class="card-sub">狐聪慧 · 猫灵敏 · 犬忠勇 · 牛厚重 · 鹰翱翔高山 · 鱼渊栖海岛</div>`
+
+  let raceId: string | null = null
+  let regionId: string | null = null
+
+  const raceGrid = document.createElement('div')
+  raceGrid.className = 'race-grid'
+  const refreshRace = () => {
+    raceGrid.innerHTML = ''
+    for (const r of RACES) {
+      const card = document.createElement('div')
+      card.className = 'race-card' + (raceId === r.id ? ' picked' : '')
+      card.innerHTML = `<b>${r.name}</b><span class="epithet">${r.epithet}</span><p>${r.traits}</p>`
+      card.onclick = () => { raceId = r.id; refreshRace() }
+      raceGrid.appendChild(card)
+    }
+  }
+  refreshRace()
+  box.appendChild(raceGrid)
+
+  const hint = document.createElement('div')
+  hint.className = 'card-sub'
+  hint.textContent = '点击大世界地图选择发源地（金色为四大文明发源地）：'
+  box.appendChild(hint)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = 640
+  canvas.height = 360
+  canvas.className = 'world-canvas'
+  box.appendChild(canvas)
+  const ctx = canvas.getContext('2d')!
+  const redraw = () => drawWorld(ctx, canvas.width, canvas.height, {
+    selectable: START_REGIONS,
+    selectedId: regionId,
+  })
+  redraw()
+  canvas.addEventListener('click', ev => {
+    const hit = hitRegion(canvas, ev, START_REGIONS)
+    if (hit) { regionId = hit.id; redraw() }
+  })
+
+  const start = document.createElement('button')
+  start.className = 'primary'
+  start.textContent = '开始纪元'
+  start.onclick = () => {
+    if (!raceId || !regionId) return
+    st = createInitialState(raceId, regionId)
+    saveGame(st)
+    renderedLog = 0
+    $('#log').innerHTML = ''
+    closeOverlay()
+    renderAll()
+  }
+  box.appendChild(start)
+  ov.appendChild(box)
+}
+
 // ── 资源条 ───────────────────────────────────────────────────
 function renderResources(): void {
+  const s = THE_ST()
   const bar = $('#resource-bar')
   bar.innerHTML = ''
-  const ids = ['food', 'wood', 'stone', 'flint', 'fiber', 'clay', 'pottery', 'insight', 'crudeAxe', 'handAxe', 'digStick']
+  const ids = ['food', 'wood', 'stone', 'flint', 'fiber', 'clay', 'copperOre', 'tinOre', 'copper', 'bronze', 'pottery', 'insight', 'faith', 'crudeAxe', 'handAxe', 'digStick', 'bronzeAxe']
   for (const id of ids) {
     const def = RES_MAP.get(id)
     if (!def) continue
-    const v = st.res[id] ?? 0
-    const cap = resCap(st, id)
+    const v = s.res[id] ?? 0
+    const cap = resCap(s, id)
+    const showZero = cap > 0 || v > 0
+    if (!showZero) continue
     const chip = document.createElement('span')
     chip.className = 'res-chip' + (cap > 0 && v >= cap ? ' full' : '')
     const capTxt = cap > 0 ? ` / ${cap}` : ''
@@ -75,41 +156,95 @@ function renderResources(): void {
 
 // ── 人口与职业 ───────────────────────────────────────────────
 function renderPop(): void {
-  const used = Object.values(st.jobs).reduce((a, b) => a + b, 0)
+  const s = THE_ST()
+  const used = Object.values(s.jobs).reduce((a, b) => a + b, 0)
+  const race = s.raceId ? RACES.find(r => r.id === s.raceId) : undefined
+  const region = s.regionId ? REGION_MAP.get(s.regionId) : undefined
   $('#pop-summary').innerHTML =
-    `族人 <b>${st.pop}</b> / ${popCap(st)}　已分配 <b>${used}</b><br>` +
-    `进食 −${foodBurn(st).toFixed(2)}/秒`
+    `${race ? `<span class="race-badge">${race.name}·${race.epithet}</span>　` : ''}${region ? `<span class="region-badge">${region.name}</span>` : ''}<br>` +
+    `族人 <b>${s.pop}</b> / ${popCap(s)}　已分配 <b>${used}</b><br>` +
+    `进食 −${(foodBurn(s) * SEASON_MODS[seasonOfNow(s)].food).toFixed(2)}/秒`
   const jobsEl = $('#jobs')
   jobsEl.innerHTML = ''
   for (const job of JOBS) {
-    const locked = job.techReq && !st.techs[job.techReq]
-    if (locked) continue
+    if (!jobAvailable(s, job)) continue
     const row = document.createElement('div')
     row.className = 'job-row'
-    const n = st.jobs[job.id] ?? 0
+    const n = s.jobs[job.id] ?? 0
     row.innerHTML = `<span class="job-name">${job.name}</span>` +
       `<button data-j="${job.id}" data-d="-1" type="button">−</button>` +
       `<span class="job-num">${n}</span>` +
-      `<button data-j="${job.id}" data-d="1" type="button" ${used >= st.pop ? 'disabled' : ''}>＋</button>` +
+      `<button data-j="${job.id}" data-d="1" type="button" ${used >= s.pop ? 'disabled' : ''}>＋</button>` +
       `<span class="job-rate">${(job.rate * 60).toFixed(1)}/分</span>`
     jobsEl.appendChild(row)
   }
   jobsEl.querySelectorAll('button').forEach(b => {
-    b.onclick = () => assignJob(st, (b as HTMLElement).dataset.j!, Number((b as HTMLElement).dataset.d))
+    b.onclick = () => assignJob(THE_ST(), (b as HTMLElement).dataset.j!, Number((b as HTMLElement).dataset.d))
   })
   const act = $('#actions')
-  if (!act.dataset.built) {
-    act.dataset.built = '1'
-    const admit = document.createElement('button')
-    admit.className = 'primary'
-    admit.textContent = `接纳族人（食物 ${admitCost(st)}）`
-    admit.onclick = () => admitPop(st)
-    act.appendChild(admit)
+  act.innerHTML = ''
+  const admit = document.createElement('button')
+  admit.className = 'primary'
+  admit.textContent = `接纳族人（食物 ${admitCost(s)}）`
+  admit.onclick = () => admitPop(THE_ST())
+  act.appendChild(admit)
+}
+
+// ── 神迹 ─────────────────────────────────────────────────────
+function renderMiracles(): void {
+  const s = THE_ST()
+  const el = $('#miracles')
+  el.innerHTML = ''
+  for (const m of MIRACLES) {
+    const row = document.createElement('div')
+    row.className = 'bld-row'
+    row.innerHTML =
+      `<div class="r-name">${m.name} <span class="t-cost">信${m.cost}</span></div>` +
+      `<div class="r-desc">${m.desc}</div>`
+    const btn = document.createElement('button')
+    btn.textContent = '降临'
+    btn.disabled = !canMiracle(s, m.id).ok
+    btn.onclick = () => { doMiracle(THE_ST(), m.id); renderMiracles() }
+    row.appendChild(btn)
+    el.appendChild(row)
   }
+}
+
+// ── 远征 ─────────────────────────────────────────────────────
+function renderExpedition(): void {
+  const s = THE_ST()
+  const el = $('#expedition')
+  if (!s.flags.expeditionUnlocked) { el.innerHTML = ''; return }
+  el.innerHTML = '<h2 style="margin:0 0 6px">远征</h2>'
+  if (s.expedition) {
+    const target = REGION_MAP.get(s.expedition.target)
+    el.innerHTML += `<div class="bld-row"><div class="r-name">远征队在路上</div><div class="r-desc">目的地：${target?.name ?? '?'} · 还需 ${Math.ceil(s.expedition.left)} 秒</div></div>`
+    return
+  }
+  const row = document.createElement('div')
+  row.className = 'bld-row'
+  const sel = document.createElement('select')
+  sel.style.cssText = 'width:100%;margin-bottom:5px'
+  for (const r of WORLD.regions) {
+    const opt = document.createElement('option')
+    opt.value = r.id
+    opt.textContent = `${r.name}${r.resources.map(x => RES_MAP.get(x.res)?.name ?? x.res).join('、')}`
+    sel.appendChild(opt)
+  }
+  const btn = document.createElement('button')
+  btn.textContent = '派出远征队（食物 20）'
+  const sync = () => { btn.disabled = !canStartExpedition(s, sel.value).ok }
+  sel.onchange = sync
+  btn.onclick = () => { startExpedition(THE_ST(), sel.value); renderExpedition() }
+  sync()
+  row.appendChild(sel)
+  row.appendChild(btn)
+  el.appendChild(row)
 }
 
 // ── 技术树 ───────────────────────────────────────────────────
 function renderTech(): void {
+  const s = THE_ST()
   const el = $('#techtree')
   el.innerHTML = ''
   const lines: TechLine[] = ['fire', 'knapping', 'pottery', 'agri', 'metal']
@@ -117,23 +252,24 @@ function renderTech(): void {
     const col = document.createElement('div')
     col.className = 'tech-line'
     col.innerHTML = `<h3>${LINE_NAMES[line]}</h3>`
-    for (const tech of TECHS.filter(t => t.line === line)) {
+    const techs = all('tech') as Tech[]
+  for (const tech of techs.filter(t => t.line === line)) {
       const node = document.createElement('div')
-      const chk = canResearch(st, tech)
+      const chk = canResearch(s, tech)
       let cls = 'tech-node'
-      if (st.techs[tech.id]) cls += ' researched'
+      if (s.techs[tech.id]) cls += ' researched'
       else if (chk.ok) cls += ' available'
       node.className = cls
       node.innerHTML =
         `<div class="t-name"><span>${tech.name}</span><span class="t-cost">${tech.cost > 0 ? '识' + tech.cost : ''}</span></div>` +
         `<div class="t-desc">${tech.desc}</div>` +
-        (st.techs[tech.id] ? '' : chk.ok ? '' : `<div class="t-req">${chk.reason}</div>`) +
-        (st.techs[tech.id] && tech.card ? '<div class="t-req">点击回顾见识卡</div>' : '')
-      if (chk.ok || st.techs[tech.id]) {
+        (s.techs[tech.id] ? '' : chk.ok ? '' : `<div class="t-req">${chk.reason}</div>`) +
+        (s.techs[tech.id] && tech.card ? '<div class="t-req">点击回顾见识卡</div>' : '')
+      if (chk.ok || s.techs[tech.id]) {
         node.querySelector('.t-name')!.addEventListener('click', () => {
-          if (st.techs[tech.id]) { showTechCard(tech.id); return }
-          research(st, tech.id)
-          if (st.techs[tech.id]) showTechCard(tech.id)
+          if (s!.techs[tech.id]) { showTechCard(tech.id); return }
+          research(s!, tech.id)
+          if (s!.techs[tech.id]) showTechCard(tech.id)
         })
       }
       col.appendChild(node)
@@ -144,22 +280,25 @@ function renderTech(): void {
 
 // ── 工坊 ─────────────────────────────────────────────────────
 function costHtml(cost: { res: string; qty: number }[]): string {
+  const s = THE_ST()
   return cost.map(c => {
-    const have = st.res[c.res] ?? 0
+    const have = s.res[c.res] ?? 0
     const name = RES_MAP.get(c.res)?.name ?? c.res
-    return `<span class="${have < c.qty ? 'lack' : ''}">${name}${st.techs.knapping3 && c.res === 'stone' ? Math.ceil(c.qty / 2) : c.qty}</span>`
+    return `<span class="${have < c.qty ? 'lack' : ''}">${name}${s.techs.knapping3 && c.res === 'stone' ? Math.ceil(c.qty / 2) : c.qty}</span>`
   }).join('　')
 }
 
 function renderBuildings(): void {
+  const s = THE_ST()
   const el = $('#buildings')
   el.innerHTML = ''
-  for (const b of BUILDINGS) {
-    const built = st.buildings[b.id] ?? 0
-    if (built > 0 && !['hut', 'kiln'].includes(b.id)) continue // 可重复建筑只显示首个提示
-    const locked = b.techReq && !st.techs[b.techReq]
+  const buildings = all('building') as BuildingDef[]
+  for (const b of buildings) {
+    const built = s.buildings[b.id] ?? 0
+    if (built > 0 && !['hut', 'kiln', 'shrine'].includes(b.id)) continue
+    const locked = b.techReq && !s.techs[b.techReq]
     if (locked) continue
-    const chk = canBuild(st, b.id)
+    const chk = canBuild(s, b.id)
     const row = document.createElement('div')
     row.className = 'bld-row'
     row.innerHTML =
@@ -170,30 +309,32 @@ function renderBuildings(): void {
     btn.textContent = '建造'
     btn.disabled = !chk.ok
     btn.title = chk.ok ? '' : chk.reason
-    btn.onclick = () => build(st, b.id)
+    btn.onclick = () => build(THE_ST(), b.id)
     row.appendChild(btn)
     el.appendChild(row)
   }
 }
 
 function renderRecipes(): void {
+  const s = THE_ST()
   const el = $('#recipes')
   el.innerHTML = ''
-  for (const r of RECIPES) {
-    if (r.techReq && !st.techs[r.techReq]) continue
+  const recipes = all('recipe') as Recipe[]
+  for (const r of recipes) {
+    if (r.techReq && !s.techs[r.techReq]) continue
     const mats = r.altMaterial
       ? [...r.materials.map(m => m.res === r.altMaterial!.res ? { ...m, qty: r.altMaterial!.qty } : m)]
       : r.materials
     const row = document.createElement('div')
     row.className = 'recipe-row'
-    const failStep = r.steps.find(s => s.failure)
+    const failStep = r.steps.find(x => x.failure)
     const risk = failStep?.failure
-      ? ` 失败率 ${failStep.failure.base * 100}%${(st.buildings.kiln ?? 0) > 0 ? `（窑 ${(failStep.failure.base + (failStep.failure.kiln ?? 0)) * 100}%）` : ''}`
+      ? ` 失败率 ${failStep.failure.base * 100}%${(s.buildings.kiln ?? 0) > 0 || (r.facilityReq && (s.buildings[r.facilityReq] ?? 0) > 0) ? `（有设施 ${(failStep.failure.base + (failStep.failure.kiln ?? 0)) * 100}%）` : ''}`
       : ''
     row.innerHTML =
       `<div class="r-name">${r.name}</div>` +
       `<div class="r-cost">${costHtml(mats)}</div>` +
-      `<div class="r-steps">${r.steps.map(s => s.name).join(' → ')}${risk ? '　' + risk.trim() : ''}</div>` +
+      `<div class="r-steps">${r.steps.map(x => x.name).join(' → ')}${risk ? '　' + risk.trim() : ''}</div>` +
       `<div class="r-desc">${r.desc}</div>`
     if (r.altMaterial) {
       const altLine = document.createElement('div')
@@ -210,20 +351,20 @@ function renderRecipes(): void {
     }
     const btn = document.createElement('button')
     btn.textContent = '开工'
-    const alt = row.querySelector<HTMLInputElement>(`#alt-${r.id}`)?.checked ?? false
-    btn.disabled = !canStartRecipe(st, r.id, alt).ok
+    const chk = canStartRecipe(s, r.id, row.querySelector<HTMLInputElement>(`#alt-${r.id}`)?.checked ?? false)
+    btn.disabled = !chk.ok
+    btn.title = chk.ok ? '' : chk.reason
     btn.onclick = () => {
       const useAlt = row.querySelector<HTMLInputElement>(`#alt-${r.id}`)?.checked ?? false
-      startRecipe(st, r.id, useAlt)
+      startRecipe(THE_ST(), r.id, useAlt)
       renderRecipes()
     }
     row.appendChild(btn)
     el.appendChild(row)
   }
-  // 试错活动
   for (const t of TRIALS) {
-    if (t.techReq && !st.techs[t.techReq]) continue
-    if (st.flags[t.successFlag]) continue
+    if (t.techReq && !s.techs[t.techReq]) continue
+    if (s.flags[t.successFlag]) continue
     const row = document.createElement('div')
     row.className = 'recipe-row'
     row.innerHTML =
@@ -232,18 +373,19 @@ function renderRecipes(): void {
       `<div class="r-desc">失败也长见识（+${t.insightOnFail}）。成功见识 +${t.successInsight}。</div>`
     const btn = document.createElement('button')
     btn.textContent = '尝试'
-    btn.disabled = !canStartTrial(st, t.id).ok
-    btn.onclick = () => { startTrial(st, t.id); renderRecipes() }
+    btn.disabled = !canStartTrial(s, t.id).ok
+    btn.onclick = () => { startTrial(THE_ST(), t.id); renderRecipes() }
     row.appendChild(btn)
     el.appendChild(row)
   }
 }
 
 function renderQueue(): void {
+  const s = THE_ST()
   const el = $('#queue')
   el.innerHTML = ''
-  if (st.queue.length === 0) { el.innerHTML = '<div class="r-desc">工坊空闲。</div>'; return }
-  st.queue.forEach((q, i) => {
+  if (s.queue.length === 0) { el.innerHTML = '<div class="r-desc">工坊空闲。</div>'; return }
+  s.queue.forEach((q, i) => {
     const item = document.createElement('div')
     item.className = 'queue-item'
     if (q.kind === 'recipe') {
@@ -268,9 +410,10 @@ function renderQueue(): void {
 // ── 日志 ─────────────────────────────────────────────────────
 let renderedLog = 0
 function renderLog(): void {
+  const s = THE_ST()
   const el = $('#log')
-  for (; renderedLog < st.log.length; renderedLog++) {
-    const e = st.log[renderedLog]
+  for (; renderedLog < s.log.length; renderedLog++) {
+    const e = s.log[renderedLog]
     const line = document.createElement('div')
     line.className = 'log-line ' + e.cls
     const day = Math.floor(e.t / 60) + 1
@@ -281,16 +424,17 @@ function renderLog(): void {
 }
 
 // ── 底栏 ─────────────────────────────────────────────────────
-function setupBottombar(): void {
+function setupActions(): void {
   $('#btn-cards').onclick = () => {
+    const s = THE_ST()
     const box = document.createElement('div')
     box.className = 'card-box'
-    const list = st.cards.map(id => {
+    const list = s.cards.map(id => {
       const t = TECH_MAP.get(id)
       if (!t?.card) return ''
       return `<div class="entry"><b>${t.card.title}</b><p>${t.card.text}</p></div>`
     }).join('')
-    box.innerHTML = `<h3>见识图鉴</h3><div class="card-sub">已收集 ${st.cards.length} / ${TECHS.filter(t => t.card).length} 张</div>` +
+    box.innerHTML = `<h3>见识图鉴</h3><div class="card-sub">已收集 ${s.cards.length} / ${(all('tech') as Tech[]).filter(t => t.card).length} 张</div>` +
       `<div class="card-list">${list || '<p>还没有收集到见识卡。</p>'}</div>`
     const btn = document.createElement('button')
     btn.textContent = '合上图鉴'
@@ -302,7 +446,7 @@ function setupBottombar(): void {
     showOverlay(box)
   }
   $('#btn-save').onclick = () => {
-    const json = exportSave(st)
+    const json = exportSave(THE_ST())
     const box = document.createElement('div')
     box.className = 'card-box'
     const ta = document.createElement('textarea')
@@ -372,10 +516,11 @@ function setupBottombar(): void {
     yes.textContent = '清空重来'
     yes.onclick = () => {
       clearSave()
-      st = createInitialState()
+      st = null
       renderedLog = 0
       $('#log').innerHTML = ''
       closeOverlay()
+      showSetup()
     }
     const no = document.createElement('button')
     no.textContent = '取消'
@@ -387,36 +532,78 @@ function setupBottombar(): void {
     box.appendChild(act)
     showOverlay(box)
   }
+  $('#btn-auto').onclick = () => {
+    const s = THE_ST()
+    s.autoManage = !s.autoManage
+    pushLog(s, '', s.autoManage ? '神明收回了指引，族人将自行劳作、自行摸索。' : '神明的目光重新落回营地。')
+    renderAll()
+  }
 }
 
 // ── 主循环 ───────────────────────────────────────────────────
 let lastSave = 0
 function loop(): void {
-  tick(st, 0.25)
-  if (st.time - lastSave >= 15) {
-    lastSave = st.time
-    saveGame(st)
+  const s = THE_ST()
+  tick(s, 0.25)
+  if (s.time - lastSave >= 15) {
+    lastSave = s.time
+    saveGame(s)
   }
 }
 
 function renderAll(): void {
+  if (!st) return
   renderResources()
   renderPop()
+  renderMiracles()
+  renderExpedition()
   renderTech()
   renderBuildings()
   renderRecipes()
   renderQueue()
   renderLog()
-  const day = Math.floor(st.time / 60) + 1
-  $('#sim-clock').textContent = `第 ${day} 天`
+  const s = THE_ST()
+  const season = seasonOfNow(s)
+  const day = Math.floor(s.time / TIME.secondsPerGameDay) + 1
+  $('#sim-clock').textContent = `第 ${day} 天 · ${Math.floor((day - 1) / 360) + 1} 年`
+  const seasonTag = $('#season-tag')
+  seasonTag.textContent = SEASON_MODS[season].label
+  seasonTag.title = SEASON_MODS[season].desc
+  seasonTag.className = season
+  $('#btn-auto').classList.toggle('on', !!s.autoManage)
+  const ctx = ($('#camp') as HTMLCanvasElement).getContext('2d')!
+  drawCamp(ctx, s, 800, 180)
+}
+
+function offlineCatchup(): void {
+  const s = THE_ST()
+  if (!s.savedAt) return
+  const elapsed = Math.min((Date.now() - s.savedAt) / 1000, TIME.maxOfflineCatchup)
+  if (elapsed < 60) return
+  const steps = 60
+  const dt = elapsed / steps
+  const before = { insight: s.res.insight, pop: s.pop, food: s.res.food, techs: Object.keys(s.techs).length }
+  for (let i = 0; i < steps; i++) tick(s, dt)
+  pushLog(s, 'good', `你离开的 ${Math.round(elapsed / 60)} 分钟里，文明仍在生长：见识 ${Math.floor(before.insight)}→${Math.floor(s.res.insight)}，技术 ${before.techs}→${Object.keys(s.techs).length} 项。`)
 }
 
 function main(): void {
-  setupBottombar()
+  $('#ver-tag').textContent = VERSION
+  setupActions()
   setInterval(loop, 250)
   setInterval(renderAll, 500)
-  renderAll()
-  window.addEventListener('beforeunload', () => saveGame(st))
+  if (st) {
+    offlineCatchup()
+    renderAll()
+  } else {
+    showSetup()
+  }
+  if ('serviceWorker' in navigator && import.meta.env.PROD) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  }
 }
 
 main()
+
+// 引用保活（类型导入被 tree-shake 时保持 API 面）
+void raceMult

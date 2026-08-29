@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#2b2b26"/>
+  <rect x="0" y="340" width="512" height="172" fill="#6f8f4e"/>
+  <rect x="236" y="230" width="40" height="18" fill="#5a4632"/>
+  <polygon points="196,236 256,150 316,236" fill="#8a6f4d"/>
+  <rect x="246" y="200" width="20" height="36" fill="#5a4632"/>
+  <rect x="248" y="292" width="16" height="6" fill="#5a4632"/>
+  <polygon points="242,292 256,264 270,292" fill="#e8862a"/>
+  <polygon points="247,292 256,274 265,292" fill="#f4c542"/>
+  <circle cx="120" cy="300" r="14" fill="#d97a3a"/>
+  <rect x="114" y="308" width="12" height="22" fill="#d97a3a"/>
+  <circle cx="392" cy="300" r="14" fill="#d97a3a"/>
+  <rect x="386" y="308" width="12" height="22" fill="#d97a3a"/>
+  <text x="256" y="470" font-family="system-ui" font-size="64" fill="#e8e4d8" text-anchor="middle" font-weight="bold">部落纪元</text>
+</svg>

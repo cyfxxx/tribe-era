@@ -20,11 +20,17 @@ export const RESOURCES: ResourceDef[] = [
   { id: 'flint',  name: '燧石', kind: 'raw',  cap: 40 },
   { id: 'fiber',  name: '植物纤维', kind: 'raw', cap: 60 },
   { id: 'clay',   name: '粘土', kind: 'raw',  cap: 80 },
+  { id: 'copperOre', name: '铜矿石', kind: 'raw', cap: 60 },
+  { id: 'tinOre',    name: '锡矿石', kind: 'raw', cap: 40 },
+  { id: 'copper',    name: '铜', kind: 'craft', cap: 40 },
+  { id: 'bronze',    name: '青铜', kind: 'craft', cap: 30 },
   { id: 'pottery',name: '陶器', kind: 'craft', cap: 30 },
   { id: 'insight',name: '见识', kind: 'meta', cap: 0 },
+  { id: 'faith',  name: '信仰', kind: 'meta', cap: 200 },
   { id: 'crudeAxe', name: '砍砸器', kind: 'tool', durability: 45, boost: 1.3 },
   { id: 'handAxe',  name: '手斧',   kind: 'tool', durability: 70, boost: 1.6 },
   { id: 'digStick', name: '石铲',   kind: 'tool', durability: 60, boost: 1.4 },
+  { id: 'bronzeAxe',name: '青铜斧', kind: 'tool', durability: 90, boost: 2.0 },
 ]
 
 export const RES_MAP = new Map(RESOURCES.map(r => [r.id, r]))

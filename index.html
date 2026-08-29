@@ -4,15 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#2b2b26" />
-  <title>部落纪元 · 灰盒原型</title>
+  <title>部落纪元</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <header id="topbar">
     <div id="topbar-row">
-      <div id="game-title">部落纪元 <span class="tag">灰盒原型 v0.1</span></div>
+      <div id="game-title">部落纪元 <span class="tag" id="ver-tag"></span></div>
       <div id="topbar-actions">
+        <span id="season-tag"></span>
         <span id="sim-clock"></span>
+        <button id="btn-auto" type="button" class="toggle">放任发展</button>
         <button id="btn-cards" type="button">见识图鉴</button>
         <button id="btn-save" type="button">导出</button>
         <button id="btn-load" type="button">导入</button>
@@ -21,12 +24,15 @@
     </div>
     <div id="resource-bar"></div>
   </header>
+  <canvas id="camp" width="800" height="180"></canvas>
   <main id="layout">
     <section id="panel-pop" class="panel">
       <h2>族人</h2>
       <div id="pop-summary"></div>
       <div id="jobs"></div>
       <div id="actions"></div>
+      <h2 style="margin-top:12px">神迹</h2>
+      <div id="miracles"></div>
     </section>
     <section id="panel-tech" class="panel">
       <h2>技术图谱</h2>
@@ -34,6 +40,7 @@
     </section>
     <section id="panel-craft" class="panel">
       <h2>工坊</h2>
+      <div id="expedition"></div>
       <div id="buildings"></div>
       <div id="recipes"></div>
       <div id="queue"></div>

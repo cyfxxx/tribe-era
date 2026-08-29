@@ -1,15 +1,14 @@
 // 存档：version 字段 + 双键轮换原子写 + 导出导入校验（save-systems 纪律）
 import type { GameState } from './sim'
-
-export const SAVE_VERSION = 1
+import { SAVE_VERSION } from './sim'
 const KEY = 'tribe-era-save'
 const KEY_BAK = 'tribe-era-save-bak'
 
 export function saveGame(state: GameState): void {
   try {
-    // 轮换：旧档进 bak，新档写主键（等价于"写临时再替换"的降级实现）
     const prev = localStorage.getItem(KEY)
     if (prev) localStorage.setItem(KEY_BAK, prev)
+    state.savedAt = Date.now()
     localStorage.setItem(KEY, JSON.stringify(state))
   } catch (e) {
     console.warn('save failed', e)
@@ -31,13 +30,22 @@ export function loadGame(): GameState | null {
   return null
 }
 
+/** 逐版本迁移：每档补默认字段，不丢数据 */
 function migrate(state: GameState): GameState | null {
-  if (state.version === SAVE_VERSION) return state
+  if (state.version > SAVE_VERSION) return null
   if (state.version < SAVE_VERSION) {
-    // 未来版本迁移钩子：逐版本 upgrade
-    return null
+    // v1 → v2：种族/区域/信仰/远征/治理字段
+    if (state.version === 1) {
+      state.faithBoostT = undefined
+      state.autoManage = state.autoManage ?? false
+      state.expedition = state.expedition ?? null
+      state.lastEventT = state.lastEventT ?? 0
+      state.freeUnlocks = state.freeUnlocks ?? false
+      state.savedAt = Date.now()
+      state.version = 2
+    }
   }
-  return null
+  return state
 }
 
 export function exportSave(state: GameState): string {

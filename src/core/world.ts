@@ -138,6 +138,7 @@ export const WORLD: WorldMap = {
       resources: [
         { res: 'stone', abundance: 3 }, { res: 'flint', abundance: 2 },
         { res: 'wood', abundance: 2 }, { res: 'food', abundance: 2 },
+        { res: 'copperOre', abundance: 3 }, { res: 'tinOre', abundance: 1 },
       ],
       modifiers: [
         { key: 'copper', label: '孔雀石之乡', desc: '露头铜矿易辨识，冶金的摇篮之一。' },

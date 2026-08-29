@@ -35,6 +35,19 @@ export const BUILDINGS: BuildingDef[] = [
     effect: { enablesKilnFiring: true },
   },
   {
+    id: 'furnace', name: '锻炉',
+    cost: [{ res: 'stone', qty: 50 }, { res: 'wood', qty: 30 }, { res: 'clay', qty: 20 }],
+    techReq: 'metal4',
+    desc: '专用高温炉膛配鼓风。熔炼铜与青铜的必备设施。',
+    effect: {},
+  },
+  {
+    id: 'shrine', name: '祭坛',
+    cost: [{ res: 'stone', qty: 15 }, { res: 'wood', qty: 10 }],
+    desc: '堆石为坛，族人晨昏祷告。信仰积累 +0.06/秒。',
+    effect: {},
+  },
+  {
     id: 'field', name: '小田',
     cost: [{ res: 'wood', qty: 10 }, { res: 'fiber', qty: 15 }],
     techReq: 'agri4',

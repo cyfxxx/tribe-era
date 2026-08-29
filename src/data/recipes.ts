@@ -18,6 +18,8 @@ export interface Recipe {
   id: string
   name: string
   techReq?: string
+  /** 设施门槛：开工前必须已建成该建筑（如锻炉熔炼） */
+  facilityReq?: string
   materials: { res: string; qty: number }[]
   /** 替代主材料：品质降低（拟真：燧石 vs 普通石料） */
   altMaterial?: { res: string; qty: number; quality: number }
@@ -29,6 +31,57 @@ export interface Recipe {
 }
 
 export const RECIPES: Recipe[] = [
+  {
+    id: 'smeltCopper', name: '熔炼铜',
+    techReq: 'metal4', facilityReq: 'furnace',
+    materials: [{ res: 'copperOre', qty: 5 }, { res: 'wood', qty: 4 }],
+    output: { res: 'copper', qty: 2 },
+    steps: [
+      { name: '选矿粉碎', secs: 15 },
+      { name: '入炉焙烧', secs: 30 },
+      {
+        name: '还原出铜', secs: 30,
+        failure: {
+          base: 0.3, kiln: -0.1, insightOnFail: 10,
+          failMsg: '炉温差了一点，铜水冻在半路——鼓风要更用力。',
+        },
+      },
+    ],
+    desc: '孔雀石五份熔得铜两锭。炉温是关键。',
+  },
+  {
+    id: 'smeltBronze', name: '熔炼青铜',
+    techReq: 'metal5', facilityReq: 'furnace',
+    materials: [{ res: 'copper', qty: 9 }, { res: 'tinOre', qty: 3 }],
+    output: { res: 'bronze', qty: 3 },
+    steps: [
+      { name: '配比称料', secs: 15 },
+      {
+        name: '合炉共熔', secs: 40,
+        failure: {
+          base: 0.35, kiln: -0.15, insightOnFail: 10,
+          failMsg: '配比失手，铜水太软或太脆——九比一，记下来。',
+        },
+      },
+      { name: '入模成形', secs: 20 },
+    ],
+    desc: '铜九锡一（矿石折算），青铜三锭。硬度远超纯铜。',
+  },
+  {
+    id: 'bronzeAxe', name: '范铸青铜斧',
+    techReq: 'metal6', facilityReq: 'furnace',
+    materials: [{ res: 'copper', qty: 2 }, { res: 'bronze', qty: 3 }, { res: 'wood', qty: 2 }],
+    output: { res: 'bronzeAxe', qty: 1 },
+    steps: [
+      { name: '制范合范', secs: 15 },
+      {
+        name: '浇铸', secs: 25,
+        failure: { base: 0.15, kiln: 0, insightOnFail: 8, failMsg: '浇铸时范内进气，斧身夹了气泡——浇口要再顺一些。' },
+      },
+      { name: '开范修刃', secs: 15 },
+    ],
+    desc: '斧刃之光。伐木效率翻倍，耐久远超石器。',
+  },
   {
     id: 'crudeAxe', name: '打制砍砸器',
     materials: [{ res: 'stone', qty: 3 }, { res: 'wood', qty: 2 }, { res: 'fiber', qty: 1 }],
