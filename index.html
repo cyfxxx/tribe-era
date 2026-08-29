@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#2b2b26" />
+  <title>部落纪元 · 灰盒原型</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div id="game-title">部落纪元 <span class="tag">灰盒原型 v0.1</span></div>
+    <div id="resource-bar"></div>
+  </header>
+  <main id="layout">
+    <section id="panel-pop" class="panel">
+      <h2>族人</h2>
+      <div id="pop-summary"></div>
+      <div id="jobs"></div>
+      <div id="actions"></div>
+    </section>
+    <section id="panel-tech" class="panel">
+      <h2>技术图谱</h2>
+      <div id="techtree"></div>
+    </section>
+    <section id="panel-craft" class="panel">
+      <h2>工坊</h2>
+      <div id="buildings"></div>
+      <div id="recipes"></div>
+      <div id="queue"></div>
+    </section>
+    <section id="panel-log" class="panel">
+      <h2>记事</h2>
+      <div id="log"></div>
+    </section>
+  </main>
+  <footer id="bottombar">
+    <button id="btn-cards" type="button">见识图鉴</button>
+    <button id="btn-save" type="button">导出存档</button>
+    <button id="btn-load" type="button">导入存档</button>
+    <button id="btn-reset" type="button">重新开始</button>
+    <span id="sim-clock"></span>
+  </footer>
+  <div id="overlay" class="hidden"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
