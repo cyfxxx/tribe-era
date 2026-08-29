@@ -9,7 +9,16 @@
 </head>
 <body>
   <header id="topbar">
-    <div id="game-title">部落纪元 <span class="tag">灰盒原型 v0.1</span></div>
+    <div id="topbar-row">
+      <div id="game-title">部落纪元 <span class="tag">灰盒原型 v0.1</span></div>
+      <div id="topbar-actions">
+        <span id="sim-clock"></span>
+        <button id="btn-cards" type="button">见识图鉴</button>
+        <button id="btn-save" type="button">导出</button>
+        <button id="btn-load" type="button">导入</button>
+        <button id="btn-reset" type="button">重开</button>
+      </div>
+    </div>
     <div id="resource-bar"></div>
   </header>
   <main id="layout">
@@ -34,13 +43,6 @@
       <div id="log"></div>
     </section>
   </main>
-  <footer id="bottombar">
-    <button id="btn-cards" type="button">见识图鉴</button>
-    <button id="btn-save" type="button">导出存档</button>
-    <button id="btn-load" type="button">导入存档</button>
-    <button id="btn-reset" type="button">重新开始</button>
-    <span id="sim-clock"></span>
-  </footer>
   <div id="overlay" class="hidden"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>

@@ -36,12 +36,21 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 
 #topbar {
   position: sticky; top: 0; z-index: 10;
-  background: #24241f;
+  background: var(--panel);
   border-bottom: 1px solid var(--panel-edge);
   padding: 8px 12px;
 }
-#game-title { font-weight: 700; margin-bottom: 6px; }
+#topbar-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+#game-title { font-weight: 700; margin-right: auto; }
 #game-title .tag { font-size: 11px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
+#topbar-actions {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+#topbar-actions button { padding: 2px 9px; font-size: 12.5px; }
+#sim-clock { color: var(--accent); font-size: 12.5px; margin-right: 4px; }
 #resource-bar { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .res-chip { white-space: nowrap; }
 .res-chip .res-name { color: var(--text-dim); margin-right: 4px; }
@@ -129,16 +138,6 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 #log .log-line.bad { color: var(--bad); }
 #log .log-line.good { color: var(--ok); }
 #log .log-line .log-day { color: var(--text-dim); margin-right: 5px; }
-
-/* 底栏 */
-#bottombar {
-  position: sticky; bottom: 0;
-  background: #24241f;
-  border-top: 1px solid var(--panel-edge);
-  padding: 8px 12px;
-  display: flex; gap: 8px; align-items: center;
-}
-#sim-clock { margin-left: auto; color: var(--text-dim); font-size: 12px; }
 
 /* 弹层：见识卡 / 图鉴 / 确认 */
 #overlay {

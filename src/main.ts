@@ -10,6 +10,15 @@ import { TECHS, TECH_MAP, LINE_NAMES, type TechLine } from './data/techs'
 import { BUILDINGS } from './data/buildings'
 import { RECIPES, TRIALS, RECIPE_MAP, TRIAL_MAP } from './data/recipes'
 import { saveGame, loadGame, exportSave, importSave, clearSave } from './state'
+import { validateContent } from './data'
+
+// 启动校验：引用断裂立即报错（频繁添加内容时的安全网）
+const errs = validateContent()
+if (errs.length > 0) {
+  console.error('[content] 校验失败：', errs)
+  document.body.innerHTML = `<pre style="color:#c06453;padding:20px">内容校验失败：\n${errs.map(e => `${e.kind}:${e.id} — ${e.problem}`).join('\n')}</pre>`
+  throw new Error('content validation failed')
+}
 
 let st: GameState = loadGame() ?? createInitialState()
 
