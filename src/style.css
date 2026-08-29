@@ -46,6 +46,12 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 }
 #game-title { font-weight: 700; margin-right: auto; }
 #game-title .tag { font-size: 11px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
+.card-box .tag {
+  display: inline-block; font-size: 11px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 3px; padding: 0 5px; margin-left: 4px;
+}
+.res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px; }
+.res-grid .entry { white-space: nowrap; }
 #topbar-actions {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
@@ -82,17 +88,34 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 #actions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 #actions .hint { color: var(--text-dim); font-size: 12px; }
 
-/* 技术树 */
-#techtree { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-.tech-line h3 {
-  font-size: 12px; margin: 0 0 6px; color: var(--info);
-  border-bottom: 1px dashed var(--panel-edge); padding-bottom: 3px;
+/* 技术树：折叠线式 */
+#techtree { display: flex; flex-direction: column; gap: 5px; }
+.tech-line {
+  border: 1px solid var(--panel-edge); border-radius: 5px; overflow: hidden;
 }
+.tech-line .line-head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+  cursor: pointer; user-select: none;
+}
+.tech-line .line-head:hover { background: rgba(217, 162, 74, 0.08); }
+.line-name { color: var(--info); font-weight: 600; font-size: 13px; }
+.line-dots { font-size: 11px; letter-spacing: 2px; }
+.line-dots .done { color: var(--ok); }
+.line-dots .todo { color: var(--locked); }
+.line-hint { margin-left: auto; color: var(--ok); font-size: 11px; }
+.tech-line.open .line-head { border-bottom: 1px dashed var(--panel-edge); }
+.tech-done {
+  display: flex; align-items: center; gap: 6px; padding: 4px 9px;
+  color: var(--text-dim); font-size: 12px;
+}
+.tech-done .t-check { color: var(--ok); }
+.tech-done.has-card { cursor: pointer; }
+.tech-done.has-card:hover { color: var(--text); background: rgba(125, 163, 90, 0.08); }
 .tech-node {
   border: 1px solid var(--locked);
   border-radius: 5px;
   padding: 7px 8px;
-  margin-bottom: 7px;
+  margin: 6px;
   opacity: 0.75;
 }
 .tech-node .t-name { font-weight: 600; display: flex; justify-content: space-between; gap: 6px; }
@@ -101,9 +124,6 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 .tech-node .t-req { font-size: 12px; color: var(--bad); margin-top: 3px; }
 .tech-node.available { border-color: var(--accent); opacity: 1; }
 .tech-node.available .t-name { cursor: pointer; }
-.tech-node.researched { border-color: var(--ok); opacity: 1; background: rgba(125, 163, 90, 0.08); }
-.tech-node.researched .t-req { color: var(--ok); }
-.tech-node.researched::after { content: "✔"; color: var(--ok); }
 
 /* 工坊 */
 .bld-row, .recipe-row {
@@ -140,15 +160,22 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); letter-spacing: 1px
 #log .log-line .log-day { color: var(--text-dim); margin-right: 5px; }
 
 /* 营地场景 */
-#camp {
+#view-tabs { display: flex; gap: 6px; max-width: 1100px; margin: 10px auto 0; justify-content: flex-start; }
+#view-tabs .tab {
+  padding: 3px 14px; border: 1px solid var(--panel-edge); border-bottom: none;
+  border-radius: 6px 6px 0 0; background: var(--panel-dim); color: var(--text-dim);
+}
+#view-tabs .tab.on { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+#camp, #worldmap {
   display: block;
   width: 100%;
   max-width: 1100px;
-  margin: 8px auto 0;
+  margin: 0 auto 8px;
   border: 1px solid var(--panel-edge);
-  border-radius: 6px;
+  border-radius: 0 6px 6px 6px;
   background: var(--panel);
 }
+#worldmap { cursor: pointer; }
 
 /* 季节标签 */
 #season-tag { color: var(--accent); font-size: 13px; margin-right: 4px; font-weight: 600; }

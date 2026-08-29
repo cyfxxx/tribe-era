@@ -23,6 +23,8 @@ export interface RegionDef {
 export interface WorldMap {
   era: string
   continents: { name: string; polygon: [number, number][] }[]
+  /** 地形色斑（biome 着色，渲染时裁剪到所属大洲） */
+  terrains: { kind: 'desert' | 'forest' | 'steppe' | 'tundra'; center: [number, number]; rx: number; ry: number }[]
   ranges: { name: string; polyline: [number, number][] }[]
   rivers: { name: string; polyline: [number, number][] }[]
   lakes: { name: string; center: [number, number]; rx: number; ry: number }[]
@@ -31,6 +33,24 @@ export interface WorldMap {
 
 export const WORLD: WorldMap = {
   era: 'new_stone_age', // 新石器时代晚期世界轮廓
+  terrains: [
+    // 真实气候带示意：撒哈拉/阿拉伯/戈壁沙漢，雨林，草原，苔原
+    { kind: 'desert', center: [38, 62], rx: 9, ry: 5 },    // 撒哈拉
+    { kind: 'desert', center: [50, 40], rx: 5, ry: 3 },    // 阿拉伯
+    { kind: 'desert', center: [66, 27], rx: 6, ry: 3 },    // 戈壁
+    { kind: 'desert', center: [86, 71], rx: 4, ry: 3 },    // 澳洲内陆
+    { kind: 'forest', center: [30, 29], rx: 6, ry: 4 },    // 欧洲森林
+    { kind: 'forest', center: [54, 34], rx: 4, ry: 3 },    // 印度季风林
+    { kind: 'forest', center: [29, 49], rx: 6, ry: 6 },    // 亚马逊
+    { kind: 'forest', center: [49, 71], rx: 6, ry: 4 },    // 刚果
+    { kind: 'forest', center: [70, 36], rx: 5, ry: 2.5 },  // 华东季风林
+    { kind: 'forest', center: [18, 15], rx: 8, ry: 5 },    // 北美针叶
+    { kind: 'tundra', center: [58, 17], rx: 14, ry: 5 },   // 西伯利亚
+    { kind: 'tundra', center: [62, 35], rx: 6, ry: 2.5 },  // 青藏高原
+    { kind: 'steppe', center: [52, 30], rx: 9, ry: 4 },    // 中亚草原
+    { kind: 'steppe', center: [50, 64], rx: 5, ry: 4 },    // 东非草原
+    { kind: 'steppe', center: [20, 26], rx: 6, ry: 4 },    // 北美草原
+  ],
   continents: [
     { name: '欧亚', polygon: [[8, 42], [18, 30], [30, 22], [48, 18], [62, 12], [78, 15], [88, 24], [92, 38], [84, 52], [70, 58], [58, 64], [48, 60], [40, 52], [28, 50], [16, 50]] },
     { name: '非洲', polygon: [[42, 58], [50, 54], [56, 60], [58, 70], [54, 82], [46, 88], [40, 80], [36, 68], [38, 60]] },

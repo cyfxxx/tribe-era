@@ -16,7 +16,7 @@ import type { Recipe } from './data/recipes'
 import { saveGame, loadGame, exportSave, importSave, clearSave } from './state'
 import { validateContent } from './data'
 import { RACES } from './core/races'
-import { START_REGIONS, WORLD, REGION_MAP } from './core/world'
+import { START_REGIONS, WORLD, REGION_MAP, type RegionDef } from './core/world'
 import { TIME, SEASON_MODS } from './core/seasons'
 import { drawWorld, hitRegion } from './ui/worldmap'
 import { drawCamp } from './ui/campview'
@@ -243,31 +243,105 @@ function renderExpedition(): void {
 }
 
 // ── 技术树 ───────────────────────────────────────────────────
+const techLineOpen: Record<string, boolean> = {}
+
+// ── 视图切换与世界地图 ─────────────────────────────
+let currentView: 'camp' | 'world' = 'camp'
+
+function switchView(view: 'camp' | 'world'): void {
+  currentView = view
+  document.querySelectorAll<HTMLButtonElement>('#view-tabs .tab').forEach(t => t.classList.toggle('on', t.dataset.view === view))
+  const camp = $('#camp') as HTMLCanvasElement
+  const world = $('#worldmap') as HTMLCanvasElement
+  camp.hidden = view !== 'camp'
+  world.hidden = view !== 'world'
+  if (view === 'world') renderWorldView()
+}
+
+function renderWorldView(): void {
+  const s = THE_ST()
+  const ctx = ($('#worldmap') as HTMLCanvasElement).getContext('2d')!
+  drawWorld(ctx, 960, 560, { currentId: s.regionId ?? null })
+}
+
+const ABUNDANCE_LABEL = ['贫瘑', '一般', '丰富', '顶级']
+
+function showRegionInfo(region: RegionDef): void {
+  const s = THE_ST()
+  const box = document.createElement('div')
+  box.className = 'card-box'
+  const isCurrent = s.regionId === region.id
+  const resList = region.resources
+    .map(r => `<span class="entry"><b>${RES_MAP.get(r.res)?.name ?? r.res}</b> ${ABUNDANCE_LABEL[r.abundance] ?? r.abundance} ${'●'.repeat(r.abundance)}</span>`)
+    .join('')
+  const modList = region.modifiers
+    .map(m => `<div class="entry"><b>${m.label}</b><p>${m.desc}</p></div>`)
+    .join('')
+  box.innerHTML =
+    `<h3>${region.name}${isCurrent ? ' <span class="tag">✦ 当前文明所在地</span>' : ''}${region.startUnlocked ? ' <span class="tag">文明发源地</span>' : ''}</h3>` +
+    `<div class="card-sub">资源分布</div><div class="card-list res-grid">${resList}</div>` +
+    `<div class="card-sub">地区特色</div><div class="card-list">${modList}</div>`
+  const btn = document.createElement('button')
+  btn.textContent = '合上'
+  btn.onclick = closeOverlay
+  const act = document.createElement('div')
+  act.className = 'card-actions'
+  act.appendChild(btn)
+  box.appendChild(act)
+  showOverlay(box)
+}
+
 function renderTech(): void {
   const s = THE_ST()
   const el = $('#techtree')
   el.innerHTML = ''
   const lines: TechLine[] = ['fire', 'knapping', 'pottery', 'agri', 'metal']
+  const techs = all('tech') as Tech[]
+  // 默认展开：优先第一条含可研究技术的线；否则（见识不足期）展开第一条有未完成技术的线
+  const autoLine =
+    lines.find(l => techs.some(t => t.line === l && !s.techs[t.id] && canResearch(s, t).ok)) ??
+    lines.find(l => techs.some(t => t.line === l && !s.techs[t.id]))
   for (const line of lines) {
+    const lineTechs = techs.filter(t => t.line === line)
+    const done = lineTechs.filter(t => s.techs[t.id]).length
+    const hasOpen = techLineOpen[line] ?? line === autoLine
     const col = document.createElement('div')
-    col.className = 'tech-line'
-    col.innerHTML = `<h3>${LINE_NAMES[line]}</h3>`
-    const techs = all('tech') as Tech[]
-  for (const tech of techs.filter(t => t.line === line)) {
+    col.className = `tech-line${hasOpen ? ' open' : ''}`
+    const head = document.createElement('div')
+    head.className = 'line-head'
+    head.innerHTML =
+      `<span class="line-name">${LINE_NAMES[line]}</span>` +
+      `<span class="line-dots"><span class="done">${'●'.repeat(done)}</span><span class="todo">${'○'.repeat(lineTechs.length - done)}</span></span>` +
+      (line === autoLine ? '<span class="line-hint">研究线</span>' : '')
+    head.addEventListener('click', () => {
+      techLineOpen[line] = !hasOpen
+      renderTech()
+    })
+    col.appendChild(head)
+    if (!hasOpen) { el.appendChild(col); continue }
+    for (const tech of lineTechs) {
       const node = document.createElement('div')
       const chk = canResearch(s, tech)
+      if (s.techs[tech.id]) {
+        // 已研究：单行徽章，点击回顾见识卡
+        node.className = 'tech-done' + (tech.card ? ' has-card' : '')
+        node.innerHTML = `<span class="t-check">✔</span>${tech.name}`
+        if (tech.card) {
+          node.addEventListener('click', () => showTechCard(tech.id))
+          node.title = '点击回顾见识卡'
+        }
+        col.appendChild(node)
+        continue
+      }
       let cls = 'tech-node'
-      if (s.techs[tech.id]) cls += ' researched'
-      else if (chk.ok) cls += ' available'
+      if (chk.ok) cls += ' available'
       node.className = cls
       node.innerHTML =
         `<div class="t-name"><span>${tech.name}</span><span class="t-cost">${tech.cost > 0 ? '识' + tech.cost : ''}</span></div>` +
         `<div class="t-desc">${tech.desc}</div>` +
-        (s.techs[tech.id] ? '' : chk.ok ? '' : `<div class="t-req">${chk.reason}</div>`) +
-        (s.techs[tech.id] && tech.card ? '<div class="t-req">点击回顾见识卡</div>' : '')
-      if (chk.ok || s.techs[tech.id]) {
+        (chk.ok ? '' : `<div class="t-req">${chk.reason}</div>`)
+      if (chk.ok) {
         node.querySelector('.t-name')!.addEventListener('click', () => {
-          if (s!.techs[tech.id]) { showTechCard(tech.id); return }
           research(s!, tech.id)
           if (s!.techs[tech.id]) showTechCard(tech.id)
         })
@@ -425,6 +499,15 @@ function renderLog(): void {
 
 // ── 底栏 ─────────────────────────────────────────────────────
 function setupActions(): void {
+  // 视图切换：营地 / 世界
+  document.querySelectorAll<HTMLButtonElement>('#view-tabs .tab').forEach(tab => {
+    tab.onclick = () => switchView(tab.dataset.view as 'camp' | 'world')
+  })
+  $('#worldmap').addEventListener('click', ev => {
+    if (currentView !== 'world') return
+    const region = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions)
+    if (region) showRegionInfo(region)
+  })
   $('#btn-cards').onclick = () => {
     const s = THE_ST()
     const box = document.createElement('div')
@@ -571,8 +654,10 @@ function renderAll(): void {
   seasonTag.title = SEASON_MODS[season].desc
   seasonTag.className = season
   $('#btn-auto').classList.toggle('on', !!s.autoManage)
-  const ctx = ($('#camp') as HTMLCanvasElement).getContext('2d')!
-  drawCamp(ctx, s, 800, 180)
+  if (currentView === 'camp') {
+    const ctx = ($('#camp') as HTMLCanvasElement).getContext('2d')!
+    drawCamp(ctx, s, 800, 180)
+  }
 }
 
 function offlineCatchup(): void {
