@@ -14,6 +14,12 @@
 - [ ] 区域 modifiers 接入产出（冲积沃土/黄土易耕等）
 - [ ] 通关解锁自由选区（metal1 后 startUnlocked 之外开放）
 
+## M1.5 插件系统（见 docs/PLUGINS.md）
+- [ ] Tier 2 声明式补丁：core/patches.ts（set/merge/remove/insert/rename + 条件应用 + 冲突报告），补丁先于校验应用
+- [ ] mod 清单与开关面板；停用包的存档残留引用处理（缺失内容占位）
+- [ ] Tier 3 事件钩子包：hooks + engineApi 白名单；插件状态命名空间 save.mods.<packId>
+- [ ] manifest（id/version/apiVersion/dependencies）与依赖拓扑加载顺序（Tier 4 前置）
+
 ## M2 神明层
 - [ ] 惯性发展 AI 正式化（simulate.ts 策略 → sim/governor.ts，性格权重）
 - [ ] 离线推进：真实时间流逝补 tick（TIME.maxOfflineCatchup 上限）+ 离线摘要

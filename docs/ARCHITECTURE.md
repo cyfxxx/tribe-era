@@ -75,3 +75,4 @@ docs/       GDD.md ARCHITECTURE.md ROADMAP.md ASSETS.md
 - 灰盒 UI（DOM）→ M3 换 Phaser 场景时，sim/core 零改动（UI 只消费状态与事件）
 - 新系统（贸易/神力/事件）= 新内容类型注册 + 新事件类型，不改既有类型
 - 破坏性 schema 变更必须 bump SAVE_VERSION 并写迁移
+- 插件系统分级方案与排期：见 docs/PLUGINS.md（Tier 1 内容包已有，Tier 2 补丁 M1.5）
