@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部落纪元 · 美术候选选择</title>
+<style>
+  body { background: #23231d; color: #e8e4d8; font-family: system-ui, "PingFang SC", sans-serif; margin: 0; padding: 24px; }
+  h1 { color: #d9a24a; font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #a5a093; font-size: 13px; margin-bottom: 24px; }
+  h2 { color: #d9a24a; font-size: 16px; border-left: 3px solid #d9a24a; padding-left: 10px; margin: 28px 0 12px; }
+  .cards { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #38382f; border: 1px solid #4a4a3f; border-radius: 8px; padding: 12px; max-width: 560px; }
+  .card .label { font-weight: 600; margin-bottom: 8px; }
+  .card .label .no { color: #d9a24a; margin-left: 8px; }
+  .card img { width: 100%; image-rendering: pixelated; border: 1px solid #5c5c4e; border-radius: 4px; }
+  .card .note { color: #a5a093; font-size: 12px; margin-top: 8px; }
+  .sheet { background: #38382f; border: 1px solid #4a4a3f; border-radius: 8px; padding: 12px; display: inline-block; }
+  .sheet .stage { background: #2b2b26; border-radius: 4px; padding: 12px; display: inline-block; }
+  .sheet img { image-rendering: pixelated; }
+  .sheet .label { color: #a5a093; font-size: 12px; margin-top: 8px; }
+  .race-row { margin-top: 6px; font-size: 12px; color: #6f93a8; }
+  .pick { color: #c06453; ]
+</style>
+</head>
+<body>
+  <h1>部落纪元 · 美术候选</h1>
+  <div class="sub">先在两张地图 / 三档人物 / 三档物品中选风格，回复编号（如"地图A 人物2 物品3"），我据此统一全站美术。</div>
+
+  <h2>大世界地图（真实 Natural Earth 数据像素化 · public domain）</h2>
+  <div class="cards">
+    <div class="card">
+      <div class="label">A. 海图风<span class="no">编号 A</span></div>
+      <img src="/art-preview/map-a-ocean.png" alt="海图风">
+      <div class="note">深蓝海洋 + 四色陆地（雨林/草原/荒漠/苔原）+ 海岸提亮。参考文明系列战略视图。</div>
+    </div>
+    <div class="card">
+      <div class="label">B. 古籍风<span class="no">编号 B</span></div>
+      <img src="/art-preview/map-b-parchment.png" alt="古籍风">
+      <div class="note">羊皮纸底色 + 墨色陆地 + 棕线经纬。像上古兽人绘制的海图。</div>
+    </div>
+  </div>
+
+  <h2>人物（6 种族 × 3 画风，横排=种族 狐/猫/犬/牛/鹰/鱼，纵排=风格 1/2/3）</h2>
+  <div class="sheet">
+    <div class="stage"><img src="/art-preview/sprites-people.png" alt="人物候选" style="width:300px"></div>
+    <div class="label">左起：狐 / 猫 / 犬 / 牛 / 鹰 / 鱼<br>三行：1 简朴 ｜ 2 特征鲜明（耳/角/羽冠/鳍）｜ 3 兜帽剪影</div>
+  </div>
+
+  <h2>物品（8 件套 × 3 画风，横排=物品，纵排=风格 1/2/3）</h2>
+  <div class="sheet">
+    <div class="stage"><img src="/art-preview/sprites-items.png" alt="物品候选" style="width:450px"></div>
+    <div class="label">横排：篝火 / 石斧 / 陶罐 / 窑 / 棚屋 / 铜锭 / 青铜斧 / 粮田<br>三行：1 扁平 ｜ 2 深描边 ｜ 3 斜面高光</div>
+  </div>
+</body>
+</html>
