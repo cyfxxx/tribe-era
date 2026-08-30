@@ -116,6 +116,21 @@ function rasterize(polygons) {
   return land
 }
 
+// ── 4.5 南极极点补全（2026-08-30）────────────────────────────
+// world-atlas land-110m 南极洲南界仅到 -88°（数据边界），且 -84° 以南海域出现
+// 中空蓝斑；真实南极大陆含极点。将 lat < -84.5°（y ≥ 466）全部标为陆地冰盖。
+function patchAntarctic(land) {
+  const yPole = Math.ceil((90 + 84.5) / 180 * H) // lat=-84.5° → y≈466
+  let n = 0
+  for (let y = yPole; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x
+      if (!land[i]) { land[i] = 1; n++ }
+    }
+  }
+  console.log('南极极点补全', n, '像素（y≥' + yPole + '）')
+}
+
 // ── 5. 噪声与距离场 ──────────────────────────────────────────
 function mulberry32(a) {
   return function () {
@@ -292,18 +307,21 @@ const PALETTES = {
   ocean: { // 风格 A：海图风（Civ strategy 参考）
     sea: [64, 106, 126], seaDeep: [40, 70, 92], seaAbyss: [28, 50, 68], seaHi: [92, 134, 148], shoal: [110, 152, 158],
     land: [128, 140, 96], coast: [232, 226, 205],
-    jungle: [70, 106, 62], forest: [96, 122, 74], steppe: [162, 168, 100],
-    desert: [200, 178, 120], tundra: [150, 152, 140], taiga: [90, 112, 86],
-    rock: [128, 118, 106], snow: [240, 240, 234],
+    jungle: [68, 100, 60], forest: [92, 116, 72], steppe: [162, 168, 100],
+    desert: [200, 178, 120], tundra: [136, 146, 140], taiga: [86, 108, 82],
+    rock: [128, 118, 106], snow: [228, 236, 242],
     hill: [168, 158, 104], mount: [186, 146, 98], grid: [255, 255, 255],
+    // 2026-08-30 P0 重做：冰原色带（近海冰架亮白 → 内陆蓝灰），高山雪线与冰盖分色
+    ice: [234, 240, 246], iceDeep: [192, 208, 226],
   },
   parchment: { // 风格 B：古籍羊皮纸
     sea: [182, 162, 122], seaDeep: [168, 148, 108], seaAbyss: [150, 130, 96], seaHi: [196, 176, 136], shoal: [204, 182, 140],
     land: [210, 194, 150], coast: [122, 96, 64],
-    jungle: [134, 148, 96], forest: [148, 154, 106], steppe: [196, 180, 130],
-    desert: [216, 194, 140], tundra: [204, 200, 176], taiga: [158, 156, 112],
-    rock: [172, 160, 140], snow: [236, 234, 220],
+    jungle: [132, 146, 96], forest: [146, 152, 106], steppe: [196, 180, 130],
+    desert: [216, 194, 140], tundra: [196, 198, 178], taiga: [156, 154, 112],
+    rock: [172, 160, 140], snow: [226, 232, 228],
     hill: [200, 178, 128], mount: [186, 158, 112], grid: [90, 70, 48],
+    ice: [240, 238, 228], iceDeep: [214, 222, 218],
   },
 }
 
@@ -324,6 +342,7 @@ function render(pal, land, label) {
   const png = new PNG({ width: W, height: H })
   const rnd = mulberry32(20260832)
   const d = distField(land, W, H)
+  const dLand = distField(land, W, H, true)
   const noiseW = makeNoise(20260903)
   // 2×2 像素簇上采样
   for (let gy = 0; gy < LH; gy++) {
@@ -334,17 +353,33 @@ function render(pal, land, label) {
       if (land[(gy * 2) * W + (gx * 2)]) {
         const hei = heiArr[gi]
         let bm = biomes[gi]
-        if (bm === 'snow' && Math.abs(lat) < 26) bm = 'rock' // 低纬雪线压制
+        if (bm === 'snow' && Math.abs(lat) < 28) bm = 'rock' // 低纬雪线压制（26→28：横断山 26N 孤立雪点）
         // 气候底色（biome）
         let col = pal[bm] ?? pal.land
         // 海拔分层设色（hypsometric tint）：低地平坦 → 丘陵黄绿 → 山地棕 → 雪线白
+        // 2026-08-30：低纬（|lat|<28）雪线止步 mount 棕——否则横断山等低纬高山
+        // 被染成孤立雪白块（bm=rock 也进 hypsometric 雪线 mix 的逻辑缺陷）
+        const snowHi = Math.abs(lat) < 28 ? pal.mount : pal.snow
         if (hei > 0.26) col = mix(col, pal.hill, Math.min(1, (hei - 0.26) / 0.2))
         if (hei > 0.46) col = mix(col, pal.mount, Math.min(1, (hei - 0.46) / 0.2))
-        if (hei > 0.66) col = mix(col, pal.snow, Math.min(1, (hei - 0.66) / 0.16))
+        if (hei > 0.66) col = mix(col, snowHi, Math.min(1, (hei - 0.66) / 0.16))
         // 微明度起伏 + 植被材质点
         const f = 0.95 + Math.min(0.55, hei) * 0.1
         ;[r, g, b] = col.map(v => Math.round(v * f))
-        if (bm === 'forest' || bm === 'jungle' || bm === 'taiga') {
+        if (bm === 'snow') {
+          // 2026-08-30 P0 重做：极地冰盖（近海冰架亮白 → 内陆蓝灰分层），高山雪线灰白掺岩
+          const aL = Math.abs(lat)
+          if (aL > 60) {
+            const dIn = Math.min(1, dLand[(gy * 2) * W + (gx * 2)] / 20)
+            const ice = mix(pal.ice, pal.iceDeep, dIn)
+            const sp = noiseW.n(gx * 0.6, gy * 0.6)
+            ;[r, g, b] = ice.map(v => Math.round(v * (0.97 + sp * 0.06)))
+          } else {
+            const sp = noiseW.n(gx * 0.8, gy * 0.8)
+            const ice = mix(pal.ice, pal.rock, Math.min(0.55, sp * 0.55))
+            ;[r, g, b] = ice.map(v => Math.round(v * (0.98 + sp * 0.04)))
+          }
+        } else if (bm === 'forest' || bm === 'jungle' || bm === 'taiga') {
           const sp = noiseW.fbm((gx + 7.3) * 0.22, (gy + 2.9) * 0.22, 2)
           if (sp > 0.68) { r = Math.round(r * 0.88); g = Math.round(g * 0.88); b = Math.round(b * 0.88) }
           else if (sp < 0.3) { r = Math.round(r * 1.1); g = Math.round(g * 1.1); b = Math.round(b * 1.1) }
@@ -389,15 +424,15 @@ function render(pal, land, label) {
       }
     }
   }
-  // 经纬网格（极淡）
+  // 经纬网格（极淡，2026-08-30 对比度 0.18→0.10 统一：0.18 在深海上过显、陆地上近乎隐形）
   const gridC = pal.grid
   for (let y = 0; y < H; y += 80) for (let x = 0; x < W; x++) {
     const i = (y * W + x) * 4
-    png.data[i] = (png.data[i] + gridC[0] * 0.18) | 0; png.data[i + 1] = (png.data[i + 1] + gridC[1] * 0.18) | 0; png.data[i + 2] = (png.data[i + 2] + gridC[2] * 0.18) | 0
+    png.data[i] = (png.data[i] + gridC[0] * 0.1) | 0; png.data[i + 1] = (png.data[i + 1] + gridC[1] * 0.1) | 0; png.data[i + 2] = (png.data[i + 2] + gridC[2] * 0.1) | 0
   }
   for (let x = 0; x < W; x += 96) for (let y = 0; y < H; y++) {
     const i = (y * W + x) * 4
-    png.data[i] = (png.data[i] + gridC[0] * 0.18) | 0; png.data[i + 1] = (png.data[i + 1] + gridC[1] * 0.18) | 0; png.data[i + 2] = (png.data[i + 2] + gridC[2] * 0.18) | 0
+    png.data[i] = (png.data[i] + gridC[0] * 0.1) | 0; png.data[i + 1] = (png.data[i + 1] + gridC[1] * 0.1) | 0; png.data[i + 2] = (png.data[i + 2] + gridC[2] * 0.1) | 0
   }
   const out = path.join('public/art-preview', `map-${label}.png`)
   fs.writeFileSync(out, PNG.sync.write(png))
@@ -429,5 +464,6 @@ console.log('大洲/岛屿多边形数（>0.05°²）:', polys.length)
 const t0 = Date.now()
 const land = rasterize(polys)
 console.log('光栅化完成', Date.now() - t0, 'ms，陆地像素', land.reduce((a, b) => a + b, 0))
+patchAntarctic(land)
 render(PALETTES.ocean, land, 'a-ocean')
 render(PALETTES.parchment, land, 'b-parchment')
