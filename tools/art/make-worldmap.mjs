@@ -116,7 +116,7 @@ function rasterize(polygons) {
   return land
 }
 
-// ── 5. biome 规则着色（纬度带 + 经度干燥带 + 噪声斑块）───────
+// ── 5. 噪声与距离场 ──────────────────────────────────────────
 function mulberry32(a) {
   return function () {
     a |= 0; a = (a + 0x6D2B79F5) | 0
@@ -125,25 +125,176 @@ function mulberry32(a) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-function biomeAt(lat, lon, rnd) {
-  const al = Math.abs(lat)
-  if (al > 66) return 'tundra'          // 极地
-  if (al > 55) return rnd() < 0.55 ? 'taiga' : 'tundra'
-  if (al > 40) return 'forest'          // 温带
-  // 热带：干燥带（纬度 15-30 受副高压控制，大陆西侧/内陆更干）
-  if (al < 12) return rnd() < 0.72 ? 'jungle' : 'steppe'
-  if (al < 25) return rnd() < 0.75 ? 'desert' : 'steppe'
-  if (al < 40) return rnd() < 0.4 ? 'desert' : 'steppe'
-  return 'steppe'
+function makeNoise(seed) {
+  const rand = mulberry32(seed)
+  const perm = new Uint8Array(512)
+  const table = new Float32Array(512)
+  for (let i = 0; i < 256; i++) { perm[i] = i; table[i] = rand() }
+  for (let i = 0; i < 256; i++) { const j = Math.floor(rand() * 256); const t = perm[i]; perm[i] = perm[j]; perm[j] = t }
+  for (let i = 0; i < 256; i++) { perm[i + 256] = perm[i]; table[i + 256] = table[i] }
+  const smooth = t => t * t * (3 - 2 * t)
+  const n = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y)
+    const xf = x - xi, yf = y - yi
+    const u = smooth(xf), v = smooth(yf)
+    const a = table[perm[(perm[xi & 255] + (yi & 255)) & 255]]
+    const b = table[perm[(perm[(xi + 1) & 255] + (yi & 255)) & 255]]
+    const cc = table[perm[(perm[xi & 255] + ((yi + 1) & 255)) & 255]]
+    const d = table[perm[(perm[(xi + 1) & 255] + ((yi + 1) & 255)) & 255]]
+    return a + (b - a) * u + (cc - a) * v + (a - b - cc + d) * u * v
+  }
+  const fbm = (x, y, oct) => {
+    let s = 0, amp = 0.5, freq = 1
+    for (let i = 0; i < oct; i++) { s += n(x * freq, y * freq) * amp; freq *= 2.1; amp *= 0.52 }
+    return Math.max(0, Math.min(1, s))
+  }
+  return { n, fbm }
 }
 
-// ── 6. 风格渲染 ──────────────────────────────────────────────
+// 距离场（chamfer 两遍扫描）：invert=false → 距陆地距离（海洋深度）；invert=true → 距海岸的陆地距离（内陆干旱度）
+function distField(land, w, h, invert = false) {
+  const INF = 1e6
+  const d = new Float32Array(w * h)
+  for (let i = 0; i < w * h; i++) d[i] = (invert ? !land[i] : land[i]) ? 0 : INF
+  for (let y = 1; y < h; y++) for (let x = 1; x < w; x++) {
+    const i = y * w + x
+    d[i] = Math.min(d[i], d[i - 1] + 1, d[i - w] + 1, d[i - w - 1] + 1.41)
+  }
+  for (let y = h - 2; y >= 0; y--) for (let x = w - 2; x >= 0; x--) {
+    const i = y * w + x
+    d[i] = Math.min(d[i], d[i + 1] + 1, d[i + w] + 1, d[i + w + 1] + 1.41)
+  }
+  return d
+}
+
+// 逻辑分辨率：2×2 像素簇 → 最终画布
+const LW = W / 2, LH = H / 2
+
+// ── 6. 自然地形生成（fBm 高程/湿度 + 距离场 + 纬度）────────
+// 每逻辑格输出 biome 与海拔
+function genTerrain(land) {
+  const noiseH = makeNoise(20260831)
+  const noiseR = makeNoise(20260901)
+  const noiseD = makeNoise(20260902)
+  const biomes = new Array(LW * LH)
+  const heiArr = new Float32Array(LW * LH)
+  const humArr = new Float32Array(LW * LH)
+  const d = distField(land, W, H)
+  const dLand = distField(land, W, H, true)
+  const maxD = 90 // 归一化长度（像素）
+  // 知名山系中心点（经度, 纬度, 半径°, 权重）——增强真实感
+  const RANGES = [
+    [-72, -32, 6, 0.55], [-77, 4, 4, 0.5], [-70, -10, 4, 0.52], [-72, -20, 5, 0.52], // 安第斯三段
+    [-105, 38, 8, 0.42], [-122, 49, 3.5, 0.42],                                    // 落基山/海岸山
+    [86, 29, 10, 0.52], [75, 34, 7, 0.46], [55, 31, 6, 0.42], [104, 26, 6, 0.44],   // 喜马拉雅/帕米尔/扎格罗斯/横断
+    [8, 46, 5, 0.44], [22, 44, 3.5, 0.4], [-7, 37, 3.5, 0.4], [36, 4, 4, 0.4], [120, 25, 4, 0.42], // 阿尔卑斯/喀尔巴阡/伊比利亚/东非裂谷/华东丘陵
+    [80, 42, 4, 0.48], [69, 38, 4, 0.44], [60, 62, 4, 0.42],                         // 天山/兴都库什/乌拉尔
+    [150, -6, 3, 0.44], [170, -44, 4, 0.42], [-114, 62, 4, 0.42], [146, 62, 4, 0.42], [15, 68, 6, 0.44], // 新几内亚/新西兰/阿拉斯加/鄂霍茨克山/斯堪的纳维亚
+  ]
+  const lat0 = 90 - ((0.5) / LH) * 180
+  for (let y = 0; y < LH; y++) {
+    const lat = 90 - ((y + 0.5) / LH) * 180
+    for (let x = 0; x < LW; x++) {
+      const i = y * LW + x
+      const lon = ((x + 0.5) / LW) * 360 - 180
+      const lx = (x + 0.5) / LW, ly = (y + 0.5) / LH
+      // 大尺度高程（山脉带）+ 中尺度起伏
+      let hei = noiseH.fbm(lx * 3.1, ly * 3.1, 5) * 0.72 + noiseR.fbm(lx * 9, ly * 9, 3) * 0.28
+      // 基线重映射：fbm 中心 ~0.48 偏高，压到低地 ~0.1-0.3、山地 0.5+ 的合理尺度
+      hei = Math.max(0, (hei - 0.34) / 0.62)
+      // 山系叠加（高斯衰减，权重分档）
+      for (const [rl, tl, r, w] of RANGES) {
+        const dlon = Math.min(Math.abs(lon - rl), 360 - Math.abs(lon - rl))
+        const dlat = lat - tl
+        const dd = Math.sqrt(dlon * dlon + dlat * dlat) / r
+        if (dd < 1.3) hei += Math.exp(-dd * dd * 1.15) * w
+      }
+      hei = Math.min(1, hei)
+  // 湿度：近岸湿润 + 噪声扰动（大陆内部干燥）
+      const seaDist = Math.min(1, dLand[(y * 2) * W + (x * 2)] / 9)
+      let hum = Math.max(0, Math.min(1, (1 - seaDist) * 0.6 + noiseD.fbm(lx * 7, ly * 7, 3) * 0.34 - 0.1))
+      // 真实大型沙漠带（副热带高压 + 内陆）：湿度压制
+      const DESERTS = [
+        [20, 22, 16], [45, 24, 10], [105, 43, 15], [82, 38, 7], [58, 30, 6], // 撒哈拉/阿拉伯/戈壁/塔克拉玛干/波斯湾�?
+        [24, -23, 9], [134, -24, 14], [-70, -24, 4], [60, 28, 6], [72, 30, 5], // 卡拉哈里/澳洲内陆/阿塔卡玛/塔尔/塔尔沙漠西
+      ]
+      for (const [el, tl, r] of DESERTS) {
+        const dlon = Math.min(Math.abs(lon - el), 360 - Math.abs(lon - el))
+        const dd = Math.sqrt(dlon * dlon + (lat - tl) ** 2) / r
+        if (dd < 1.5) hum -= Math.exp(-dd * dd * 1.5) * 0.68
+      }
+      // 真实雨林带（赤道低压 + 季风）：湿度加持
+      const JUNGLES = [
+        [-60, -3, 15], [23, 0, 12], [115, -2, 13], [103, -5, 8], [15, -10, 6],
+      ]
+      for (const [el, tl, r] of JUNGLES) {
+        const dlon = Math.min(Math.abs(lon - el), 360 - Math.abs(lon - el))
+        const dd = Math.sqrt(dlon * dlon + (lat - tl) ** 2) / r
+        if (dd < 1.5) hum += Math.exp(-dd * dd * 1.2) * 0.48
+      }
+      // 冲积绿洲带（两河/尼罗河谷）：人工灌溉平原，草原而非荒漠
+      const OASES = [[45, 33, 3.5], [31, 28, 3.5]]
+      for (const [el, tl, r] of OASES) {
+        const dlon = Math.min(Math.abs(lon - el), 360 - Math.abs(lon - el))
+        const dd = Math.sqrt(dlon * dlon + (lat - tl) ** 2) / r
+        if (dd < 1.5) hum += Math.exp(-dd * dd * 1.2) * 0.42
+      }
+      hum = Math.max(0, Math.min(1, hum))
+      // 高纬湿度修正（蒸发弱 + 冻土湿地：西伯利亚/加拿大针叶林带）
+      if (Math.abs(lat) > 50) hum += 0.17
+      // 极地冰盖强制（南极/格陵兰）
+      if (lat < -68 || (lat > 70 && lon > -75 && lon < -20)) hei = 0.99
+      humArr[i] = hum
+      heiArr[i] = hei
+      biomes[i] = biomeOf(lat, hum, hei, noiseD)
+    }
+  }
+  // 3×3 多数投票平滑 2 轮（消椒盐）
+  const idx = (x, y) => y * LW + (x + LW) % LW
+  for (let pass = 0; pass < 2; pass++) {
+    const src = biomes.slice()
+    for (let y = 1; y < LH - 1; y++) for (let x = 1; x < LW - 1; x++) {
+      const votes = new Map()
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const v = src[idx(x + dx, y + dy)]
+        const base = v.startsWith('rock') ? 'rock' : v.startsWith('snow') ? 'snow' : v
+        votes.set(base, (votes.get(base) ?? 0) + 1)
+      }
+      let best = src[y * LW + x], bestN = 1
+      for (const [k, n] of votes) if (n > bestN) { best = k; bestN = n }
+      biomes[y * LW + x] = best
+    }
+  }
+  return { biomes, heiArr, humArr }
+}
+
+function biomeOf(lat, hum, hei, noise) {
+  const al = Math.abs(lat)
+  // 极地冰盖
+  if (hei > 0.9) return 'snow'
+  // 高山：岩/雪（低纬雪线更高）
+  if (hei > 0.72) return al > 26 ? 'snow' : 'rock'
+  if (hei > 0.58) return 'rock'
+  if (hei > 0.5) return 'steppe'
+  // 低地：纬向气候 + 湿度
+  if (al > 64) return 'tundra'
+  if (al > 52) return hum > 0.3 ? 'taiga' : 'tundra'
+  if (al > 34) return hum > 0.38 ? 'forest' : 'steppe'
+  if (al < 9) return hum > 0.42 ? 'jungle' : 'steppe'
+  if (al < 22) return hum < 0.26 ? 'desert' : (hum < 0.55 ? 'steppe' : 'forest')
+  if (al < 34) return hum < 0.2 ? 'desert' : (hum < 0.48 ? 'steppe' : 'forest')
+  if (al < 50) return hum < 0.3 ? 'desert' : (hum < 0.45 ? 'steppe' : 'forest')
+  return hum < 0.34 ? 'desert' : 'steppe'
+}
+
+// ── 8. 风格渲染 ──────────────────────────────────────────────
 const PALETTES = {
   ocean: { // 风格 A：海图风（Civ strategy 参考）
     sea: [46, 82, 104], seaDeep: [34, 62, 82], seaHi: [58, 100, 122],
     land: [116, 128, 92], coast: [232, 226, 205],
-    jungle: [74, 108, 64], forest: [94, 118, 70], steppe: [154, 163, 96],
-    desert: [196, 173, 116], tundra: [146, 154, 142], taiga: [88, 106, 84],
+    jungle: [66, 100, 58], forest: [92, 118, 70], steppe: [158, 166, 98],
+    desert: [198, 176, 118], tundra: [148, 152, 140], taiga: [86, 108, 82],
+    rock: [126, 118, 106], snow: [240, 240, 234],
     grid: [255, 255, 255],
   },
   parchment: { // 风格 B：古籍羊皮纸
@@ -151,40 +302,107 @@ const PALETTES = {
     land: [210, 194, 150], coast: [122, 96, 64],
     jungle: [134, 148, 96], forest: [148, 154, 106], steppe: [196, 180, 130],
     desert: [216, 194, 140], tundra: [204, 200, 176], taiga: [158, 156, 112],
+    rock: [172, 160, 140], snow: [236, 234, 220],
     grid: [90, 70, 48],
   },
 }
 
 function render(pal, land, label) {
+  const { biomes, heiArr, humArr } = genTerrain(land)
+  if (process.env.DEBUG === '1') {
+    const hist = new Array(10).fill(0)
+    let cnt = 0
+    for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+      if (!land[(y * 2) * W + (x * 2)]) continue
+      hist[Math.min(9, Math.floor(humArr[y * LW + x] * 10))]++
+      cnt++
+    }
+    console.log('hum 直方图(陆地):', hist.map((v, i) => `${i / 10}-${(i + 1) / 10}:${(v / cnt * 100).toFixed(1)}%`).join(' '))
+  }
   const png = new PNG({ width: W, height: H })
-  const rnd = mulberry32(20260830)
-  // 预生成每格 biome（用 2×2 块降噪：以像素中心经纬）
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x
-      const lat = 90 - ((y + 0.5) / H) * 180
-      const lon = ((x + 0.5) / W) * 360 - 180
-      let [r, g, b] = pal.sea
-      if (land[i]) {
-        const bm = biomeAt(lat, lon, () => rnd())
+  const rnd = mulberry32(20260832)
+  const d = distField(land, W, H)
+  const noiseW = makeNoise(20260903)
+  // 2×2 像素簇上采样
+  for (let gy = 0; gy < LH; gy++) {
+    for (let gx = 0; gx < LW; gx++) {
+      const gi = gy * LW + gx
+      const lat = 90 - ((gy + 0.5) / LH) * 180
+      let [r, g, b] = [0, 0, 0]
+      if (land[(gy * 2) * W + (gx * 2)]) {
+        const hei = heiArr[gi]
+        let bm = biomes[gi]
+        if (bm === 'snow' && Math.abs(lat) < 26) bm = 'rock' // 低纬雪线压制
         const c = pal[bm] ?? pal.land
-        ;[r, g, b] = c
-        // 海岸线提亮（相邻有海）
-        const isCoast = [i - 1, i + 1, i - W, i + W].some(j => j >= 0 && j < W * H && !land[j])
-        if (isCoast && rnd() < 0.5) { r = pal.coast[0]; g = pal.coast[1]; b = pal.coast[2] }
-      } else if (rnd() < 0.5) {
-        ;[r, g, b] = pal.seaDeep
+        // 海拔明度微调：岩石/雪随高度渐变，其余 ±7%
+        let f = 1
+        if (bm === 'rock') f = 0.9 + hei * 0.28
+        else if (bm === 'snow') f = 1
+        else f = 0.94 + (Math.min(0.6, hei) - 0.3) * 0.18
+        ;[r, g, b] = c.map(v => Math.round(v * f))
+        // 植被材质点（噪声细斑）
+        if (bm === 'forest' || bm === 'jungle' || bm === 'taiga') {
+          const sp = noiseW.fbm((gx + 7.3) * 0.22, (gy + 2.9) * 0.22, 2)
+          if (sp > 0.68) { r = Math.round(r * 0.86); g = Math.round(g * 0.86); b = Math.round(b * 0.86) }
+          else if (sp < 0.3) { r = Math.round(r * 1.12); g = Math.round(g * 1.12); b = Math.round(b * 1.12) }
+        } else if (bm === 'desert' || bm === 'steppe') {
+          const sp = noiseW.n(gx * 0.9, gy * 0.9)
+          if (sp > 0.62) { g = Math.round(g * 0.94) }
+        } else if (bm === 'rock' || bm === 'snow') {
+          // 雪岩抖点渐变
+          const sp = noiseW.n(gx * 1.3, gy * 1.3)
+          if (sp > hei * 0.5 + 0.25 && bm === 'snow') { r -= 8; g -= 8; b -= 8 }
+        }
+        // 海岸提亮（相邻逻辑格有海）
+        const isCoast =
+          !land[((gy) * 2) * W + (gx * 2 + 2)] || !land[((gy) * 2) * W + (gx * 2 - 2)] ||
+          !land[((gy * 2 + 2)) * W + (gx * 2)] || !land[((gy * 2 - 2)) * W + (gx * 2)]
+        if (isCoast) { r = pal.coast[0]; g = pal.coast[1]; b = pal.coast[2] }
+      } else {
+        // 海洋深度渐变 + 波纹
+        const dd = Math.min(1, d[gy * 2 * W + gx * 2] / 26)
+        ;[r, g, b] = pal.seaDeep.map((v, k) => v + (pal.sea[k] - v) * (dd < 1 ? Math.sqrt(dd) : 0.82))
+        const wv = noiseW.n(gx * 0.35, gy * 0.35)
+        if (wv > 0.6 && dd > 0.4) { r = Math.round(r * 0.96); g = Math.round(g * 0.96); b = Math.round(b * 0.96) }
+        if (dd < 0.09 && rnd() < 0.3) { r = pal.seaHi[0]; g = pal.seaHi[1]; b = pal.seaHi[2] } // 浅滩亮斑
       }
-      png.data[i * 4] = r; png.data[i * 4 + 1] = g; png.data[i * 4 + 2] = b; png.data[i * 4 + 3] = 255
+      // 2×2 写入
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const i = ((gy * 2 + dy) * W + (gx * 2 + dx)) * 4
+        png.data[i] = r; png.data[i + 1] = g; png.data[i + 2] = b; png.data[i + 3] = 255
+      }
     }
   }
-  // 经纬网格
+  // 经纬网格（极淡）
   const gridC = pal.grid
-  for (let y = 0; y < H; y += 80) for (let x = 0; x < W; x++) { const i = y * W + x; png.data[i * 4 + 3] = 255; if (x % 2 === 0) { png.data[i * 4] = gridC[0] | 0; png.data[i * 4 + 1] = gridC[1] | 0; png.data[i * 4 + 2] = gridC[2] | 0 } }
-  for (let x = 0; x < W; x += 96) for (let y = 0; y < H; y++) { const i = y * W + x; if (y % 2 === 0) { png.data[i * 4] = gridC[0] | 0; png.data[i * 4 + 1] = gridC[1] | 0; png.data[i * 4 + 2] = gridC[2] | 0 } }
+  for (let y = 0; y < H; y += 80) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4
+    png.data[i] = (png.data[i] + gridC[0] * 0.18) | 0; png.data[i + 1] = (png.data[i + 1] + gridC[1] * 0.18) | 0; png.data[i + 2] = (png.data[i + 2] + gridC[2] * 0.18) | 0
+  }
+  for (let x = 0; x < W; x += 96) for (let y = 0; y < H; y++) {
+    const i = (y * W + x) * 4
+    png.data[i] = (png.data[i] + gridC[0] * 0.18) | 0; png.data[i + 1] = (png.data[i + 1] + gridC[1] * 0.18) | 0; png.data[i + 2] = (png.data[i + 2] + gridC[2] * 0.18) | 0
+  }
   const out = path.join('public/art-preview', `map-${label}.png`)
   fs.writeFileSync(out, PNG.sync.write(png))
-  console.log('写出', out, fs.statSync(out).size, 'bytes')
+  console.log('写出', out, fs.statSync(out).size, 'bytes，陆地', (land.reduce((a, b) => a + b, 0) / (W * H) * 100).toFixed(1) + '%')
+  // 统计输出（供无图环境质检）
+  const stats = new Map()
+  for (const bm of biomes) stats.set(bm, (stats.get(bm) ?? 0) + 1)
+  console.log('biome 占比:', [...stats.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / (LW * LH) * 100).toFixed(1)}%`).join('  '))
+  // 真实地理点位逐格确认
+  const SPOTS = [
+    ['撒哈拉', 20, 22], ['阿拉伯', 45, 24], ['戈壁', 105, 43], ['卡拉哈里', 24, -23], ['澳洲内陆', 134, -24], ['塔克拉玛干', 82, 38],
+    ['亚马逊', -60, -3], ['刚果', 23, 0], ['印尼', 115, -2], ['西伯利亚针叶', 90, 60], ['中亚草原', 65, 45], ['北美大平原', -100, 42],
+    ['安第斯', -70, -25], ['喜马拉雅', 86, 29], ['阿尔卑斯', 8, 46], ['南极', 0, -80], ['格陵兰', -45, 74], ['两河流域', 45, 33],
+  ]
+  for (const [name, lon, lat] of SPOTS) {
+    const gx = Math.round(((lon + 180) / 360) * LW) % LW
+    const gy = Math.round(((90 - lat) / 180) * LH)
+    const gi = gy * LW + gx
+    const onLand = land[(gy * 2) * W + (gx * 2)]
+    console.log(`点位 ${name}(${lon}°,${lat}°) → ${onLand ? biomes[gi] : '海洋'} hei=${heiArr[gi].toFixed(2)}`)
+  }
 }
 
 // ── 主流程 ───────────────────────────────────────────────────
