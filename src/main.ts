@@ -34,6 +34,43 @@ let st: GameState | null = loadGame()
 if (st && (!st.raceId || !st.regionId)) st = null // 旧档无开局信息：引导重开（可先导出旧档）
 const THE_ST = () => st as GameState
 
+// ── 像素图标（16×16 crispEdges SVG）──────────────────────────
+const IC = (body: string, cls = 'res-ico') =>
+  `<svg class="${cls}" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">${body}</svg>`
+const R = (x: number, y: number, w: number, h: number, f: string) =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}"/>`
+const RES_ICONS: Record<string, string> = {
+  // 资源徽标
+  food: IC(R(4, 6, 8, 7, '#c96b4f') + R(5, 7, 2, 2, '#e8dcc0') + R(9, 9, 2, 2, '#e8dcc0') + R(6, 5, 4, 1, '#7da35a')),
+  wood: IC(R(4, 4, 8, 8, '#8a6244') + R(6, 6, 4, 4, '#c39a6b') + R(7, 7, 2, 2, '#8a6244')),
+  stone: IC(R(3, 6, 10, 7, '#9a9a8e') + R(4, 5, 8, 1, '#c0c0b2') + R(5, 8, 3, 2, '#7e7e72')),
+  flint: IC(R(2, 9, 4, 4, '#6e7684') + R(6, 7, 4, 4, '#6e7684') + R(10, 4, 4, 5, '#8a93a3') + R(11, 5, 2, 2, '#e8e6dd')),
+  fiber: IC(R(4, 4, 8, 7, '#c8b86a') + R(3, 11, 10, 3, '#a09a6a') + R(6, 6, 4, 4, '#2b2b26')),
+  clay: IC(R(4, 5, 8, 6, '#b9824f') + R(5, 6, 3, 3, '#a06f42') + R(11, 5, 1, 3, '#c9905e')),
+  copperOre: IC(R(4, 5, 8, 7, '#8a8272') + R(6, 7, 4, 3, '#c97a4a') + R(7, 8, 2, 1, '#e8a06a')),
+  tinOre: IC(R(4, 5, 8, 7, '#9a9aa8') + R(6, 7, 4, 3, '#c7c7da') + R(7, 8, 2, 1, '#f0f0fa')),
+  copper: IC(R(3, 7, 10, 3, '#d98c49') + R(4, 10, 8, 2, '#c97a3a') + R(4, 6, 8, 1, '#f0a86a')),
+  bronze: IC(R(3, 7, 10, 3, '#b07a52') + R(4, 10, 8, 2, '#9a6844') + R(4, 6, 8, 1, '#d0a070')),
+  pottery: IC(R(5, 4, 6, 2, '#c9905e') + R(6, 6, 4, 5, '#b57a4c') + R(7, 11, 2, 2, '#a06a40') + R(5, 6, 1, 3, '#d8a878')),
+  insight: IC(R(3, 5, 10, 6, '#e8dcc0') + R(4, 6, 8, 4, '#23231d') + R(6, 7, 4, 2, '#d9a24a') + R(7, 7, 2, 1, '#fff8e8')),
+  faith: IC(R(7, 2, 2, 3, '#e8e0c8') + R(6, 5, 4, 2, '#e8e0c8') + R(5, 7, 6, 2, '#e8e0c8') + R(4, 9, 8, 2, '#e8e0c8') + R(3, 11, 10, 2, '#e8e0c8')),
+  crudeAxe: IC(R(2, 4, 2, 9, '#8a6244') + R(4, 2, 6, 6, '#8a93a3') + R(5, 3, 3, 4, '#aeb6c4')),
+  handAxe: IC(R(2, 3, 2, 10, '#8a6244') + R(4, 1, 7, 6, '#7e8795') + R(5, 2, 4, 4, '#9aa3b2') + R(6, 3, 2, 1, '#e8e6dd')),
+  digStick: IC(R(6, 2, 2, 10, '#8a6244') + R(4, 12, 8, 2, '#6e7684') + R(8, 4, 1, 3, '#c39a6b')),
+  bronzeAxe: IC(R(2, 3, 2, 10, '#8a6244') + R(4, 1, 8, 7, '#b07a52') + R(5, 2, 6, 5, '#c9905e') + R(6, 3, 3, 3, '#d8a878') + R(11, 3, 2, 3, '#8a5a3a')),
+  // 行徽标：工坊分区与线头
+  workshop: IC(R(4, 8, 8, 5, '#b08968') + R(5, 10, 2, 3, '#6e4a2a') + R(3, 6, 10, 2, '#c9884f') + R(6, 3, 4, 3, '#8a4a2a'), 'r-ico'),
+  expedition: IC(R(2, 3, 2, 10, '#8a6a4a') + R(4, 3, 8, 5, '#c96b4f') + R(4, 5, 6, 1, '#e8dcc0') + R(12, 3, 1, 5, '#8a6a4a'), 'r-ico'),
+  recipe: IC(R(2, 6, 4, 6, '#8a6a4a') + R(3, 12, 2, 2, '#8a6a4a') + R(6, 4, 6, 6, '#9aa3b2') + R(4, 3, 10, 1, '#7e8795'), 'r-ico'),
+  faithIco: IC(R(7, 2, 2, 3, '#e8e0c8') + R(6, 5, 4, 2, '#e8e0c8') + R(5, 7, 6, 2, '#e8e0c8') + R(4, 9, 8, 2, '#e8e0c8') + R(3, 11, 10, 2, '#e8e0c8'), 'r-ico'),
+  fireIco: IC(R(5, 8, 6, 6, '#d9693f') + R(6, 6, 4, 4, '#e8924a') + R(7, 4, 2, 3, '#f0c060') + R(6, 10, 4, 4, '#9e4a2a'), 'line-ico'),
+  knapIco: IC(R(6, 3, 2, 4, '#8a93a3') + R(4, 7, 6, 3, '#7e8795') + R(2, 10, 10, 3, '#6e7684'), 'line-ico'),
+  potIco: IC(R(5, 4, 6, 2, '#c9905e') + R(6, 6, 4, 5, '#b57a4c') + R(7, 11, 2, 2, '#a06a40'), 'line-ico'),
+  agriIco: IC(R(7, 2, 2, 4, '#d9a24a') + R(5, 6, 6, 3, '#d9a24a') + R(3, 9, 10, 3, '#7da35a') + R(7, 12, 2, 2, '#5a7450'), 'line-ico'),
+  metalIco: IC(R(4, 4, 8, 8, '#8a8272') + R(6, 6, 4, 4, '#c97a4a') + R(9, 2, 2, 2, '#f0c060') + R(12, 6, 2, 2, '#f0c060'), 'line-ico'),
+}
+const LINE_ICONS: Record<string, string> = { fire: 'fireIco', knapping: 'knapIco', pottery: 'potIco', agri: 'agriIco', metal: 'metalIco' }
+
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T
 const VERSION = 'v0.2'
 
@@ -148,8 +185,10 @@ function renderResources(): void {
     if (!showZero) continue
     const chip = document.createElement('span')
     chip.className = 'res-chip' + (cap > 0 && v >= cap ? ' full' : '')
+    // 食物低于安全线（2 天口粮）闪红警示
+    if (id === 'food' && v <= s.pop * 2) chip.classList.add('warn')
     const capTxt = cap > 0 ? ` / ${cap}` : ''
-    chip.innerHTML = `<span class="res-name">${def.name}</span><span class="res-qty">${Math.floor(v)}${capTxt}</span>`
+    chip.innerHTML = `${RES_ICONS[id] ?? ''}<span class="res-name">${def.name}</span><span class="res-qty">${Math.floor(v)}${capTxt}</span>`
     bar.appendChild(chip)
   }
 }
@@ -199,7 +238,7 @@ function renderMiracles(): void {
     const row = document.createElement('div')
     row.className = 'bld-row'
     row.innerHTML =
-      `<div class="r-name">${m.name} <span class="t-cost">信${m.cost}</span></div>` +
+      `<div class="r-name">${RES_ICONS['faithIco']}<span>${m.name}</span> <span class="t-cost">信${m.cost}</span></div>` +
       `<div class="r-desc">${m.desc}</div>`
     const btn = document.createElement('button')
     btn.textContent = '降临'
@@ -215,7 +254,7 @@ function renderExpedition(): void {
   const s = THE_ST()
   const el = $('#expedition')
   if (!s.flags.expeditionUnlocked) { el.innerHTML = ''; return }
-  el.innerHTML = '<h2 style="margin:0 0 6px">远征</h2>'
+  el.innerHTML = `<div class="sub-head">${RES_ICONS['expedition']}<span>远征</span></div>`
   if (s.expedition) {
     const target = REGION_MAP.get(s.expedition.target)
     el.innerHTML += `<div class="bld-row"><div class="r-name">远征队在路上</div><div class="r-desc">目的地：${target?.name ?? '?'} · 还需 ${Math.ceil(s.expedition.left)} 秒</div></div>`
@@ -247,6 +286,7 @@ const techLineOpen: Record<string, boolean> = {}
 
 // ── 视图切换与世界地图 ─────────────────────────────
 let currentView: 'camp' | 'world' = 'camp'
+let worldHover: string | null = null
 
 function switchView(view: 'camp' | 'world'): void {
   currentView = view
@@ -261,7 +301,7 @@ function switchView(view: 'camp' | 'world'): void {
 function renderWorldView(): void {
   const s = THE_ST()
   const ctx = ($('#worldmap') as HTMLCanvasElement).getContext('2d')!
-  drawWorld(ctx, 960, 560, { currentId: s.regionId ?? null })
+  drawWorld(ctx, 960, 560, { currentId: s.regionId ?? null, hoverId: worldHover })
 }
 
 const ABUNDANCE_LABEL = ['贫瘑', '一般', '丰富', '顶级']
@@ -272,7 +312,7 @@ function showRegionInfo(region: RegionDef): void {
   box.className = 'card-box'
   const isCurrent = s.regionId === region.id
   const resList = region.resources
-    .map(r => `<span class="entry"><b>${RES_MAP.get(r.res)?.name ?? r.res}</b> ${ABUNDANCE_LABEL[r.abundance] ?? r.abundance} ${'●'.repeat(r.abundance)}</span>`)
+    .map(r => `<span class="entry">${RES_ICONS[r.res] ?? ''}<b>${RES_MAP.get(r.res)?.name ?? r.res}</b> ${ABUNDANCE_LABEL[r.abundance] ?? r.abundance} ${'●'.repeat(r.abundance)}</span>`)
     .join('')
   const modList = region.modifiers
     .map(m => `<div class="entry"><b>${m.label}</b><p>${m.desc}</p></div>`)
@@ -305,14 +345,15 @@ function renderTech(): void {
     const lineTechs = techs.filter(t => t.line === line)
     const done = lineTechs.filter(t => s.techs[t.id]).length
     const hasOpen = techLineOpen[line] ?? line === autoLine
+    const hasAvail = lineTechs.some(t => !s.techs[t.id] && canResearch(s, t).ok)
     const col = document.createElement('div')
     col.className = `tech-line${hasOpen ? ' open' : ''}`
     const head = document.createElement('div')
     head.className = 'line-head'
     head.innerHTML =
-      `<span class="line-name">${LINE_NAMES[line]}</span>` +
+      `<span class="line-name">${RES_ICONS[LINE_ICONS[line]] ?? ''}<span>${LINE_NAMES[line]}</span></span>` +
       `<span class="line-dots"><span class="done">${'●'.repeat(done)}</span><span class="todo">${'○'.repeat(lineTechs.length - done)}</span></span>` +
-      (line === autoLine ? '<span class="line-hint">研究线</span>' : '')
+      (hasAvail ? '<span class="line-hint pulsing">研究线</span>' : line === autoLine ? '<span class="line-hint">研究线</span>' : '')
     head.addEventListener('click', () => {
       techLineOpen[line] = !hasOpen
       renderTech()
@@ -365,7 +406,7 @@ function costHtml(cost: { res: string; qty: number }[]): string {
 function renderBuildings(): void {
   const s = THE_ST()
   const el = $('#buildings')
-  el.innerHTML = ''
+  el.innerHTML = `<div class="sub-head">${RES_ICONS['workshop']}<span>建筑</span></div>`
   const buildings = all('building') as BuildingDef[]
   for (const b of buildings) {
     const built = s.buildings[b.id] ?? 0
@@ -392,7 +433,7 @@ function renderBuildings(): void {
 function renderRecipes(): void {
   const s = THE_ST()
   const el = $('#recipes')
-  el.innerHTML = ''
+  el.innerHTML = `<div class="sub-head">${RES_ICONS['recipe']}<span>配方与试错</span></div>`
   const recipes = all('recipe') as Recipe[]
   for (const r of recipes) {
     if (r.techReq && !s.techs[r.techReq]) continue
@@ -457,7 +498,7 @@ function renderRecipes(): void {
 function renderQueue(): void {
   const s = THE_ST()
   const el = $('#queue')
-  el.innerHTML = ''
+  el.innerHTML = `<div class="sub-head">${RES_ICONS['workshop']}<span>队列</span></div>`
   if (s.queue.length === 0) { el.innerHTML = '<div class="r-desc">工坊空闲。</div>'; return }
   s.queue.forEach((q, i) => {
     const item = document.createElement('div')
@@ -508,6 +549,16 @@ function setupActions(): void {
     const region = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions)
     if (region) showRegionInfo(region)
   })
+  const wm = $('#worldmap') as HTMLCanvasElement
+  wm.addEventListener('mousemove', ev => {
+    if (currentView !== 'world') return
+    const r = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions)
+    const next = r?.id ?? null
+    if (next !== worldHover) { worldHover = next; renderWorldView() }
+  })
+  wm.addEventListener('mouseleave', () => {
+    if (currentView === 'world' && worldHover !== null) { worldHover = null; renderWorldView() }
+  })
   $('#btn-cards').onclick = () => {
     const s = THE_ST()
     const box = document.createElement('div')
@@ -528,99 +579,138 @@ function setupActions(): void {
     box.appendChild(act)
     showOverlay(box)
   }
-  $('#btn-save').onclick = () => {
-    const json = exportSave(THE_ST())
-    const box = document.createElement('div')
-    box.className = 'card-box'
-    const ta = document.createElement('textarea')
-    ta.style.width = '100%'
-    ta.style.height = '160px'
-    ta.value = json
-    box.innerHTML = '<h3>导出存档</h3><div class="card-sub">复制下面的 JSON 妥善保存</div>'
-    box.appendChild(ta)
-    const dl = document.createElement('button')
-    dl.textContent = '下载文件'
-    dl.onclick = () => {
-      const blob = new Blob([json], { type: 'application/json' })
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = 'tribe-era-save.json'
-      a.click()
-    }
-    const close = document.createElement('button')
-    close.textContent = '关闭'
-    close.onclick = closeOverlay
-    const act = document.createElement('div')
-    act.className = 'card-actions'
-    act.appendChild(dl)
-    act.appendChild(close)
-    box.appendChild(act)
-    showOverlay(box)
-  }
-  $('#btn-load').onclick = () => {
-    const box = document.createElement('div')
-    box.className = 'card-box'
-    box.innerHTML = '<h3>导入存档</h3><div class="card-sub">粘贴导出的 JSON</div>'
-    const ta = document.createElement('textarea')
-    ta.style.width = '100%'
-    ta.style.height = '160px'
-    box.appendChild(ta)
-    const ok = document.createElement('button')
-    ok.className = 'primary'
-    ok.textContent = '导入'
-    ok.onclick = () => {
-      const loaded = importSave(ta.value)
-      if (loaded) {
-        st = loaded
-        renderedLog = 0
-        $('#log').innerHTML = ''
-        pushLog(st, 'good', '存档已恢复。')
-        closeOverlay()
-      } else {
-        ta.value = '存档无效。'
-      }
-    }
-    const cancel = document.createElement('button')
-    cancel.textContent = '取消'
-    cancel.onclick = closeOverlay
-    const act = document.createElement('div')
-    act.className = 'card-actions'
-    act.appendChild(ok)
-    act.appendChild(cancel)
-    box.appendChild(act)
-    showOverlay(box)
-  }
-  $('#btn-reset').onclick = () => {
-    const box = document.createElement('div')
-    box.className = 'card-box'
-    box.innerHTML = '<h3>重新开始</h3><div class="card-text">当前进度将清空（导出存档除外）。确定吗？</div>'
-    const yes = document.createElement('button')
-    yes.className = 'danger'
-    yes.textContent = '清空重来'
-    yes.onclick = () => {
-      clearSave()
-      st = null
-      renderedLog = 0
-      $('#log').innerHTML = ''
-      closeOverlay()
-      showSetup()
-    }
-    const no = document.createElement('button')
-    no.textContent = '取消'
-    no.onclick = closeOverlay
-    const act = document.createElement('div')
-    act.className = 'card-actions'
-    act.appendChild(yes)
-    act.appendChild(no)
-    box.appendChild(act)
-    showOverlay(box)
-  }
+  $('#btn-menu').onclick = showSaveMenu
   $('#btn-auto').onclick = () => {
     const s = THE_ST()
     s.autoManage = !s.autoManage
     pushLog(s, '', s.autoManage ? '神明收回了指引，族人将自行劳作、自行摸索。' : '神明的目光重新落回营地。')
     renderAll()
   }
+}
+
+// ── 存档菜单 ─────────────────────────────────────────────────
+function showSaveMenu(): void {
+  const s = THE_ST()
+  const box = document.createElement('div')
+  box.className = 'card-box'
+  const day = Math.floor(s.time / TIME.secondsPerGameDay) + 1
+  box.innerHTML =
+    `<h3>存档</h3>` +
+    `<div class="card-sub">第 ${day} 天 · ${Math.floor((day - 1) / 360) + 1} 年 · ${s.pop} 人 · 技术 ${Object.keys(s.techs).length} 项</div>` +
+    `<div class="card-list"><div class="entry"><b>导出</b><p>复制存档文本或下载为文件，可随时恢复。</p></div>` +
+    `<div class="entry"><b>导入</b><p>粘贴之前导出的存档文本。</p></div>` +
+    `<div class="entry"><b>重新开始</b><p class="warn-text">清空当前纪元，回到创世选择。</p></div></div>`
+  const exp = document.createElement('button')
+  exp.textContent = '导出'
+  exp.onclick = () => { closeOverlay(); showExportBox() }
+  const imp = document.createElement('button')
+  imp.textContent = '导入'
+  imp.onclick = () => { closeOverlay(); showImportBox() }
+  const res = document.createElement('button')
+  res.className = 'danger'
+  res.textContent = '重新开始'
+  res.onclick = () => { closeOverlay(); showResetBox() }
+  const close = document.createElement('button')
+  close.textContent = '关闭'
+  close.onclick = closeOverlay
+  const act = document.createElement('div')
+  act.className = 'card-actions'
+  act.appendChild(exp)
+  act.appendChild(imp)
+  act.appendChild(res)
+  act.appendChild(close)
+  box.appendChild(act)
+  showOverlay(box)
+}
+
+function showExportBox(): void {
+  const json = exportSave(THE_ST())
+  const box = document.createElement('div')
+  box.className = 'card-box'
+  const ta = document.createElement('textarea')
+  ta.style.width = '100%'
+  ta.style.height = '160px'
+  ta.value = json
+  box.innerHTML = '<h3>导出存档</h3><div class="card-sub">复制下面的 JSON 妥善保存</div>'
+  box.appendChild(ta)
+  const dl = document.createElement('button')
+  dl.textContent = '下载文件'
+  dl.onclick = () => {
+    const blob = new Blob([json], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'tribe-era-save.json'
+    a.click()
+  }
+  const close = document.createElement('button')
+  close.textContent = '关闭'
+  close.onclick = closeOverlay
+  const act = document.createElement('div')
+  act.className = 'card-actions'
+  act.appendChild(dl)
+  act.appendChild(close)
+  box.appendChild(act)
+  showOverlay(box)
+}
+
+function showImportBox(): void {
+  const box = document.createElement('div')
+  box.className = 'card-box'
+  box.innerHTML = '<h3>导入存档</h3><div class="card-sub">粘贴导出的 JSON</div>'
+  const ta = document.createElement('textarea')
+  ta.style.width = '100%'
+  ta.style.height = '160px'
+  box.appendChild(ta)
+  const ok = document.createElement('button')
+  ok.className = 'primary'
+  ok.textContent = '导入'
+  ok.onclick = () => {
+    const loaded = importSave(ta.value)
+    if (loaded) {
+      st = loaded
+      renderedLog = 0
+      $('#log').innerHTML = ''
+      pushLog(st, 'good', '存档已恢复。')
+      closeOverlay()
+    } else {
+      ta.value = '存档无效。'
+    }
+  }
+  const cancel = document.createElement('button')
+  cancel.textContent = '取消'
+  cancel.onclick = closeOverlay
+  const act = document.createElement('div')
+  act.className = 'card-actions'
+  act.appendChild(ok)
+  act.appendChild(cancel)
+  box.appendChild(act)
+  showOverlay(box)
+}
+
+function showResetBox(): void {
+  const box = document.createElement('div')
+  box.className = 'card-box'
+  box.innerHTML = '<h3>重新开始</h3><div class="card-text">当前进度将清空（导出存档除外）。确定吗？</div>'
+  const yes = document.createElement('button')
+  yes.className = 'danger'
+  yes.textContent = '清空重来'
+  yes.onclick = () => {
+    clearSave()
+    st = null
+    renderedLog = 0
+    $('#log').innerHTML = ''
+    closeOverlay()
+    showSetup()
+  }
+  const no = document.createElement('button')
+  no.textContent = '取消'
+  no.onclick = closeOverlay
+  const act = document.createElement('div')
+  act.className = 'card-actions'
+  act.appendChild(yes)
+  act.appendChild(no)
+  box.appendChild(act)
+  showOverlay(box)
 }
 
 // ── 主循环 ───────────────────────────────────────────────────

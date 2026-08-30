@@ -55,7 +55,7 @@ function pip(pt: Pt, poly: Pt[]): boolean {
   return inside
 }
 
-export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, opts: { selectable?: RegionDef[]; selectedId?: string | null; currentId?: string | null; colors?: Partial<MapColors> }): void {
+export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, opts: { selectable?: RegionDef[]; selectedId?: string | null; currentId?: string | null; hoverId?: string | null; colors?: Partial<MapColors> }): void {
   const c = { ...DEFAULT, ...opts.colors }
   const X = (x: number) => (x / 100) * w
   const Y = (y: number) => (y / 100) * h
@@ -69,7 +69,7 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
   grad.addColorStop(1, c.sea)
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, w, h)
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)'
   ctx.lineWidth = 1
   for (let i = 0; i < 6; i++) {
     const yy = h * (0.12 + i * 0.15)
@@ -83,7 +83,7 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
   }
 
   // 经纬网格（极淡）
-  ctx.strokeStyle = 'rgba(240, 236, 223, 0.05)'
+  ctx.strokeStyle = 'rgba(240, 236, 223, 0.03)'
   for (let gx = 0; gx <= 100; gx += 10) {
     ctx.beginPath(); ctx.moveTo(X(gx), 0); ctx.lineTo(X(gx), h); ctx.stroke()
   }
@@ -107,11 +107,15 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
     ctx.clip()
     for (const t of WORLD.terrains) {
       if (!pip(t.center, cont.polygon)) continue
-      ctx.globalAlpha = 0.5
+      ctx.globalAlpha = 0.68
       ctx.fillStyle = terrainColors[t.kind]
       ctx.beginPath()
       ctx.ellipse(X(t.center[0]), Y(t.center[1]), X(t.rx), Y(t.ry), 0, 0, Math.PI * 2)
       ctx.fill()
+      // 色斑边缘：同色浓度微描
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)'
+      ctx.lineWidth = 1
+      ctx.stroke()
       ctx.globalAlpha = 1
     }
     ctx.restore()
@@ -149,7 +153,7 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
         const y = y1 + ((y2 - y1) * s) / steps
         const r = 3.2 * scale
         // 山影
-        ctx.strokeStyle = 'rgba(40, 44, 38, 0.35)'
+        ctx.strokeStyle = 'rgba(40, 44, 38, 0.22)'
         ctx.lineWidth = 1
         ctx.beginPath()
         ctx.moveTo(X(x) - r, Y(y) + r * 0.7)
@@ -174,41 +178,83 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
     }
   }
 
-  // 区域标记：发源地菱形 + 名字（描边字），当前文明红圈
+  // 区域标注层：势力圈 + 状态色编码 + 名称背衬（hover 高亮）
   const fontSize = Math.max(10, 11 * scale)
   ctx.font = `${fontSize}px system-ui, sans-serif`
   ctx.textBaseline = 'middle'
+  const REGION_R = 3.3 // 势力圈半径（归一化）
   for (const region of WORLD.regions) {
     const selectable = opts.selectable?.includes(region) ?? true
     const selected = opts.selectedId === region.id
     const isCurrent = opts.currentId === region.id
+    const hovered = opts.hoverId === region.id
+    const unlocked = selectable || isCurrent
     const px = X(region.pos[0])
     const py = Y(region.pos[1])
-    const r = (selected ? 6 : 4.5) * scale
+    const pxr = (X(REGION_R) - X(0)) * 0.55 // 圈半径
+    // 势力圈：解锁金圈（虚线）/ 未解锁灰圈；hover 实线加亮
+    ctx.strokeStyle = unlocked ? (hovered ? c.selected : c.regionOk) : c.regionLocked
+    ctx.lineWidth = hovered ? 2 * scale : 1.1 * scale
+    ctx.setLineDash(hovered ? [] : [3 * scale, 3 * scale])
+    ctx.beginPath()
+    ctx.arc(px, py, pxr, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
     if (isCurrent) {
-      ctx.strokeStyle = c.current
-      ctx.lineWidth = 1.6 * scale
-      ctx.beginPath(); ctx.arc(px, py, r + 4 * scale, 0, Math.PI * 2); ctx.stroke()
-      ctx.globalAlpha = 0.35
-      ctx.beginPath(); ctx.arc(px, py, r + 7.5 * scale, 0, Math.PI * 2); ctx.stroke()
+      // 当前文明：白圈 + 内红点（任何底色可辨）
+      ctx.strokeStyle = '#f4f0e2'
+      ctx.lineWidth = 1.8 * scale
+      ctx.beginPath()
+      ctx.arc(px, py, pxr * 0.55, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.fillStyle = c.current
+      ctx.beginPath()
+      ctx.arc(px, py, pxr * 0.26, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (selected) {
+      ctx.globalAlpha = 0.25
+      ctx.fillStyle = c.selected
+      ctx.beginPath()
+      ctx.arc(px, py, pxr * 0.5, 0, Math.PI * 2)
+      ctx.fill()
       ctx.globalAlpha = 1
     }
-    // 菱形标记
-    ctx.save()
-    ctx.translate(px, py)
-    ctx.rotate(Math.PI / 4)
-    ctx.fillStyle = selected ? c.selected : (selectable || isCurrent ? c.regionOk : c.regionLocked)
-    const rr = r * 0.72
-    ctx.fillRect(-rr, -rr, rr * 2, rr * 2)
-    ctx.restore()
-    // 名字：描边字保证可读
-    ctx.lineWidth = 3 * scale
-    ctx.strokeStyle = 'rgba(34, 38, 34, 0.85)'
-    ctx.textAlign = 'left'
-    ctx.strokeText(region.name, px + 8 * scale, py)
-    ctx.fillStyle = '#f0ecdf'
-    ctx.fillText(region.name, px + 8 * scale, py)
+    // 名称：深色背衬（hover 更亮），右侧优先、靠右区域左对齐避免重叠
+    ctx.textAlign = region.pos[0] > 55 ? 'right' : 'left'
+    const lx = px + (region.pos[0] > 55 ? -pxr * 0.95 : pxr * 0.95)
+    const tw = ctx.measureText(region.name).width
+    const lw = tw + 8 * scale
+    const lft = region.pos[0] > 55 ? lx - lw : lx
+    ctx.fillStyle = hovered ? 'rgba(24, 26, 22, 0.94)' : 'rgba(34, 38, 34, 0.78)'
+    ctx.fillRect(lft, py - fontSize * 0.75, lw, fontSize * 1.5)
+    ctx.fillStyle = unlocked ? (hovered ? '#ffd479' : '#f0ecdf') : '#9a9a8c'
+    ctx.fillText(region.name, lx, py)
   }
+
+  // 图例（右下角）
+  const lx0 = w - 152 * scale
+  const ly0 = h - 94 * scale
+  ctx.fillStyle = 'rgba(24, 26, 22, 0.7)'
+  ctx.fillRect(lx0, ly0, 148 * scale, 90 * scale)
+  ctx.font = `${Math.max(9, 10 * scale)}px system-ui, sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = '#f0ecdf'
+  ctx.fillText('地形', lx0 + 8 * scale, ly0 + 13 * scale)
+  const terrDefs: [string, string][] = [['desert', '沙漠'], ['forest', '森林'], ['steppe', '草原'], ['tundra', '苔原']]
+  const cell = 9 * scale
+  terrDefs.forEach(([kind, label], i) => {
+    const cx = lx0 + 8 * scale + (i % 2) * 66 * scale
+    const cy = ly0 + 24 * scale + Math.floor(i / 2) * 17 * scale
+    ctx.fillStyle = terrainColors[kind]
+    ctx.fillRect(cx, cy - cell * 0.6, cell, cell)
+    ctx.fillStyle = '#d8d4c6'
+    ctx.font = `${Math.max(9, 10 * scale)}px system-ui, sans-serif`
+    ctx.fillText(label, cx + cell + 4 * scale, cy + 1)
+  })
+  ctx.fillStyle = '#d8d4c6'
+  ctx.fillText('◉ 当前文明　─ 河流　∧ 山脉', lx0 + 8 * scale, ly0 + 63 * scale)
+  ctx.fillText('点击区域查看资源与特色', lx0 + 8 * scale, ly0 + 79 * scale)
 }
 
 /** 点击命中检测：返回命中的区域（默认全部区域可选，阈值按画布宽度自适应） */
