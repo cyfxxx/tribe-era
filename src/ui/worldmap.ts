@@ -55,10 +55,14 @@ function pip(pt: Pt, poly: Pt[]): boolean {
   return inside
 }
 
-export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, opts: { selectable?: RegionDef[]; selectedId?: string | null; currentId?: string | null; hoverId?: string | null; colors?: Partial<MapColors> }): void {
+export interface WorldView { cx: number; cy: number; zoom: number }
+
+export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, opts: { selectable?: RegionDef[]; selectedId?: string | null; currentId?: string | null; hoverId?: string | null; view?: WorldView; colors?: Partial<MapColors> }): void {
   const c = { ...DEFAULT, ...opts.colors }
-  const X = (x: number) => (x / 100) * w
-  const Y = (y: number) => (y / 100) * h
+  const view = opts.view ?? { cx: 50, cy: 50, zoom: 1 }
+  // 视口变换：归一化坐标 → 屏幕（以画布中心为锚）
+  const X = (x: number) => (x - view.cx) * view.zoom * (w / 100) + w / 2
+  const Y = (y: number) => (y - view.cy) * view.zoom * (h / 100) + h / 2
   const scale = w / 640
   ctx.clearRect(0, 0, w, h)
 
@@ -96,7 +100,7 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
   for (const cont of WORLD.continents) {
     smoothClosedPath(ctx, cont.polygon, X, Y)
     ctx.strokeStyle = c.halo
-    ctx.lineWidth = 7 * scale
+    ctx.lineWidth = 7 * scale * view.zoom
     ctx.stroke()
     ctx.fillStyle = c.land
     ctx.fill()
@@ -110,7 +114,9 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
       ctx.globalAlpha = 0.68
       ctx.fillStyle = terrainColors[t.kind]
       ctx.beginPath()
-      ctx.ellipse(X(t.center[0]), Y(t.center[1]), X(t.rx), Y(t.ry), 0, 0, Math.PI * 2)
+      const ax = X(t.center[0])
+      const ay = Y(t.center[1])
+      ctx.ellipse(ax, ay, Math.max(0.1, Math.abs(X(t.center[0] + t.rx) - ax)), Math.max(0.1, Math.abs(Y(t.center[1] + t.ry) - ay)), 0, 0, Math.PI * 2)
       ctx.fill()
       // 色斑边缘：同色浓度微描
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)'
@@ -121,13 +127,13 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
     ctx.restore()
     smoothClosedPath(ctx, cont.polygon, X, Y)
     ctx.strokeStyle = c.landEdge
-    ctx.lineWidth = 1.4 * scale
+    ctx.lineWidth = 1.4 * scale * view.zoom
     ctx.stroke()
   }
 
   // 河流（平滑曲线）
   ctx.strokeStyle = c.water
-  ctx.lineWidth = 1.8 * scale
+  ctx.lineWidth = 1.8 * scale * view.zoom
   ctx.lineCap = 'round'
   for (const river of WORLD.rivers) {
     smoothOpenPath(ctx, river.polyline, X, Y)
@@ -138,7 +144,9 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
   ctx.fillStyle = c.water
   for (const lake of WORLD.lakes) {
     ctx.beginPath()
-    ctx.ellipse(X(lake.center[0]), Y(lake.center[1]), X(lake.rx), Y(lake.ry), 0, 0, Math.PI * 2)
+    const lax = X(lake.center[0])
+    const lay = Y(lake.center[1])
+    ctx.ellipse(lax, lay, Math.max(0.1, Math.abs(X(lake.center[0] + lake.rx) - lax)), Math.max(0.1, Math.abs(Y(lake.center[1] + lake.ry) - lay)), 0, 0, Math.PI * 2)
     ctx.fill()
   }
 
@@ -179,7 +187,7 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
   }
 
   // 区域标注层：势力圈 + 状态色编码 + 名称背衬（hover 高亮）
-  const fontSize = Math.max(10, 11 * scale)
+  const fontSize = Math.max(10, Math.min(19, 11 * scale * view.zoom))
   ctx.font = `${fontSize}px system-ui, sans-serif`
   ctx.textBaseline = 'middle'
   const REGION_R = 3.3 // 势力圈半径（归一化）
@@ -257,14 +265,18 @@ export function drawWorld(ctx: CanvasRenderingContext2D, w: number, h: number, o
   ctx.fillText('点击区域查看资源与特色', lx0 + 8 * scale, ly0 + 79 * scale)
 }
 
-/** 点击命中检测：返回命中的区域（默认全部区域可选，阈值按画布宽度自适应） */
-export function hitRegion(canvas: HTMLCanvasElement, ev: MouseEvent, selectable: RegionDef[]): RegionDef | null {
+/** 点击/悬浮命中检测：返回命中的区域（默认全部区域可选；view 传入视口变换） */
+export function hitRegion(canvas: HTMLCanvasElement, ev: MouseEvent, selectable: RegionDef[], view?: WorldView): RegionDef | null {
   const rect = canvas.getBoundingClientRect()
   const sx = canvas.width / rect.width
   const sy = canvas.height / rect.height
-  const px = ((ev.clientX - rect.left) * sx * 100) / canvas.width
-  const py = ((ev.clientY - rect.top) * sy * 100) / canvas.height
-  const threshold = 5
+  const pxScreen = (ev.clientX - rect.left) * sx
+  const pyScreen = (ev.clientY - rect.top) * sy
+  const v = view ?? { cx: 50, cy: 50, zoom: 1 }
+  // canvas 像素 → 归一化坐标（视口反变换）
+  const px = (pxScreen - canvas.width / 2) / (v.zoom * (canvas.width / 100)) + v.cx
+  const py = (pyScreen - canvas.height / 2) / (v.zoom * (canvas.height / 100)) + v.cy
+  const threshold = Math.max(4, Math.min(6.5, 4.6 * v.zoom))
   let best: { r: RegionDef; d: number } | null = null
   for (const r of selectable) {
     const d = Math.hypot(r.pos[0] - px, r.pos[1] - py)

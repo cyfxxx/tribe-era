@@ -207,12 +207,13 @@ h2 {
 #log .log-line .log-day { color: var(--text-dim); margin-right: 5px; }
 
 /* 营地场景 */
-#view-tabs { display: flex; gap: 6px; max-width: 1100px; margin: 10px auto 0; justify-content: flex-start; }
+#view-tabs { display: flex; gap: 6px; max-width: 1100px; margin: 10px auto 0; justify-content: flex-start; align-items: flex-end; }
 #view-tabs .tab {
   padding: 3px 14px; border: 1px solid var(--panel-edge); border-bottom: none;
   border-radius: 6px 6px 0 0; background: var(--panel-dim); color: var(--text-dim);
 }
 #view-tabs .tab.on { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+#btn-recenter { margin-left: auto; align-self: center; font-size: 12px; }
 #camp, #worldmap {
   display: block;
   width: 100%;
@@ -273,8 +274,16 @@ button.toggle.on { background: var(--ok); color: #23231d; border-color: var(--ok
 .card-box .card-list .entry p { margin: 3px 0 0; color: var(--text-dim); }
 .card-box .card-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
-/* 手机竖排 */
+/* 手机竖排 + 触屏适配 */
 @media (max-width: 980px) {
   #layout { grid-template-columns: 1fr; }
   #log { max-height: 30vh; }
+}
+@media (pointer: coarse), (max-width: 640px) {
+  button { min-height: 38px; padding: 6px 12px; }
+  #topbar-actions button { min-height: 34px; }
+  #view-tabs .tab { min-height: 32px; padding: 4px 16px; font-size: 14px; }
+  .job-row button { min-height: 30px; }
+  .card-box { padding: 14px; }
+  canvas { touch-action: pan-y; } /* 地图横向拖动留给页面滚动，避免手势冲突 */
 }

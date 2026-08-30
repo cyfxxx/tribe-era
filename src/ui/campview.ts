@@ -120,6 +120,31 @@ export function drawCamp(ctx: CanvasRenderingContext2D, st: GameState, w: number
     ctx.fillText(`远征 → ${Math.ceil(st.expedition.left)}s`, 12, h - 8)
   }
 
+  // 日月与晨昏（天空，随 dayT 移动）
+  const sunX = w * (0.12 + dayT * 0.76)
+  const sunY = h * (0.22 - Math.sin(dayT * Math.PI * 2) * 0.1)
+  if (dayT > 0.06 && dayT < 0.94) {
+    ctx.fillStyle = 'rgba(244, 210, 90, 0.25)'
+    ctx.beginPath(); ctx.arc(sunX, sunY, 9, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#f4d25a'
+    ctx.beginPath(); ctx.arc(sunX, sunY, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#e8b84a'
+    ctx.fillRect(sunX - 1, sunY - 2, 2, 2)
+  } else {
+    ctx.fillStyle = 'rgba(216, 220, 224, 0.14)'
+    ctx.beginPath(); ctx.arc(sunX, sunY, 7, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#d8dce0'
+    ctx.beginPath(); ctx.arc(sunX, sunY, 4, 0, Math.PI * 2); ctx.fill()
+  }
+  // 晨昏暖光（黎明≈日 0.28、黄昏≈日 0.72）
+  const dawnGlow = Math.max(0, 1 - Math.abs(dayT - 0.28) * 7)
+  const duskGlow = Math.max(0, 1 - Math.abs(dayT - 0.72) * 7)
+  const warm = Math.max(dawnGlow, duskGlow)
+  if (warm > 0) {
+    ctx.fillStyle = `rgba(240, 150, 70, ${warm * 0.14})`
+    ctx.fillRect(0, 0, w, h)
+  }
+
   // 夜色
   if (night > 0) {
     ctx.fillStyle = `rgba(20,24,48,${night * 0.45})`
@@ -133,5 +158,24 @@ export function drawCamp(ctx: CanvasRenderingContext2D, st: GameState, w: number
       const y = ((i * 29 + Math.floor(st.time * 20)) % 100) / 100 * h
       ctx.fillRect(x, y, 2, 2)
     }
+  }
+
+  // 近期灾祸警示旗（营地右上缘，90 游戏秒内）
+  let warn = false
+  for (let i = st.log.length - 1; i >= 0 && st.log[i].t >= st.time - 90; i--) {
+    if (st.log[i].cls === 'bad') { warn = true; break }
+  }
+  if (warn) {
+    const fx = Math.min(cx + 165, w - 40)
+    const fy = 40
+    ctx.fillStyle = '#5a4632'
+    ctx.fillRect(fx - 2, fy - 24, 2, 26)
+    ctx.fillStyle = '#c06453'
+    ctx.fillRect(fx, fy - 24, 13, 9)
+    ctx.fillStyle = '#e8dcc0'
+    ctx.fillRect(fx + 2, fy - 22, 7, 2)
+    const puff = (st.time % 1.6) / 1.6
+    ctx.fillStyle = `rgba(192, 100, 83, ${0.38 - puff * 0.22})`
+    ctx.fillRect(fx + 9 + (puff > 0.5 ? 5 : 0), fy - 32 - puff * 20, 5, 5)
   }
 }

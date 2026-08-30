@@ -18,7 +18,7 @@ import { validateContent } from './data'
 import { RACES } from './core/races'
 import { START_REGIONS, WORLD, REGION_MAP, type RegionDef } from './core/world'
 import { TIME, SEASON_MODS } from './core/seasons'
-import { drawWorld, hitRegion } from './ui/worldmap'
+import { drawWorld, hitRegion, type WorldView } from './ui/worldmap'
 import { drawCamp } from './ui/campview'
 
 // ── 启动校验：引用断裂立即报错 ──────────────────────────────
@@ -287,6 +287,19 @@ const techLineOpen: Record<string, boolean> = {}
 // ── 视图切换与世界地图 ─────────────────────────────
 let currentView: 'camp' | 'world' = 'camp'
 let worldHover: string | null = null
+let worldView: WorldView | null = null        // 世界视图视口（null=未初始）
+let worldDrag = false                          // 拖拽中
+let dragMoved = false                          // 本拖拽是否位移（区分点击）
+const ZOOM_MIN = 0.7
+const ZOOM_MAX = 3
+
+function worldViewInit(): WorldView {
+  if (worldView) return worldView
+  const s = THE_ST()
+  const cur = s.regionId ? REGION_MAP.get(s.regionId) : undefined
+  worldView = { cx: cur?.pos[0] ?? 50, cy: cur?.pos[1] ?? 50, zoom: 1 }
+  return worldView
+}
 
 function switchView(view: 'camp' | 'world'): void {
   currentView = view
@@ -295,13 +308,14 @@ function switchView(view: 'camp' | 'world'): void {
   const world = $('#worldmap') as HTMLCanvasElement
   camp.hidden = view !== 'camp'
   world.hidden = view !== 'world'
+  $('#btn-recenter').hidden = view !== 'world'
   if (view === 'world') renderWorldView()
 }
 
 function renderWorldView(): void {
   const s = THE_ST()
   const ctx = ($('#worldmap') as HTMLCanvasElement).getContext('2d')!
-  drawWorld(ctx, 960, 560, { currentId: s.regionId ?? null, hoverId: worldHover })
+  drawWorld(ctx, 960, 560, { currentId: s.regionId ?? null, hoverId: worldHover, view: worldViewInit() })
 }
 
 const ABUNDANCE_LABEL = ['贫瘑', '一般', '丰富', '顶级']
@@ -545,20 +559,68 @@ function setupActions(): void {
     tab.onclick = () => switchView(tab.dataset.view as 'camp' | 'world')
   })
   $('#worldmap').addEventListener('click', ev => {
-    if (currentView !== 'world') return
-    const region = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions)
+    if (currentView !== 'world' || dragMoved) return
+    const region = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions, worldView ?? undefined)
     if (region) showRegionInfo(region)
   })
   const wm = $('#worldmap') as HTMLCanvasElement
+  // 拖拽平移
+  let dragStart: { x: number; y: number; cx: number; cy: number } | null = null
+  wm.addEventListener('mousedown', ev => {
+    if (currentView !== 'world') return
+    worldDrag = true
+    dragMoved = false
+    const v = worldViewInit()
+    dragStart = { x: ev.clientX, y: ev.clientY, cx: v.cx, cy: v.cy }
+  })
   wm.addEventListener('mousemove', ev => {
     if (currentView !== 'world') return
-    const r = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions)
+    if (worldDrag && dragStart) {
+      const rect = wm.getBoundingClientRect()
+      const v = worldViewInit()
+      const dx = (ev.clientX - dragStart.x) * (wm.width / rect.width)
+      const dy = (ev.clientY - dragStart.y) * (wm.height / rect.height)
+      if (Math.abs(dx) + Math.abs(dy) > 6) dragMoved = true
+      v.cx = dragStart.cx - dx / (v.zoom * (wm.width / 100))
+      v.cy = dragStart.cy - dy / (v.zoom * (wm.height / 100))
+      worldView = v
+      renderWorldView()
+      return
+    }
+    const r = hitRegion(ev.currentTarget as HTMLCanvasElement, ev as MouseEvent, WORLD.regions, worldView ?? undefined)
     const next = r?.id ?? null
     if (next !== worldHover) { worldHover = next; renderWorldView() }
   })
+  const endDrag = () => { worldDrag = false; dragStart = null; dragMoved = false }
+  wm.addEventListener('mouseup', endDrag)
   wm.addEventListener('mouseleave', () => {
+    endDrag()
     if (currentView === 'world' && worldHover !== null) { worldHover = null; renderWorldView() }
   })
+  // 滚轮缩放（绕鼠标锚点）
+  wm.addEventListener('wheel', ev => {
+    if (currentView !== 'world') return
+    ev.preventDefault()
+    const v = worldViewInit()
+    const rect = wm.getBoundingClientRect()
+    const mx = (ev.clientX - rect.left) * (wm.width / rect.width)
+    const my = (ev.clientY - rect.top) * (wm.height / rect.height)
+    const wx = (mx - wm.width / 2) / (v.zoom * (wm.width / 100)) + v.cx
+    const wy = (my - wm.height / 2) / (v.zoom * (wm.height / 100)) + v.cy
+    v.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v.zoom * (ev.deltaY < 0 ? 1.12 : 0.89)))
+    v.cx = wx - (mx - wm.width / 2) / (v.zoom * (wm.width / 100))
+    v.cy = wy - (my - wm.height / 2) / (v.zoom * (wm.height / 100))
+    worldView = v
+    renderWorldView()
+  }, { passive: false })
+  // 归位：聚焦当前文明
+  $('#btn-recenter').onclick = () => {
+    if (currentView !== 'world') return
+    const s = THE_ST()
+    const cur = s.regionId ? REGION_MAP.get(s.regionId) : undefined
+    worldView = { cx: cur?.pos[0] ?? 50, cy: cur?.pos[1] ?? 50, zoom: 1.6 }
+    renderWorldView()
+  }
   $('#btn-cards').onclick = () => {
     const s = THE_ST()
     const box = document.createElement('div')
