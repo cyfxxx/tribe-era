@@ -290,22 +290,24 @@ function biomeOf(lat, hum, hei, noise) {
 // ── 8. 风格渲染 ──────────────────────────────────────────────
 const PALETTES = {
   ocean: { // 风格 A：海图风（Civ strategy 参考）
-    sea: [46, 82, 104], seaDeep: [34, 62, 82], seaHi: [58, 100, 122],
-    land: [116, 128, 92], coast: [232, 226, 205],
-    jungle: [66, 100, 58], forest: [92, 118, 70], steppe: [158, 166, 98],
-    desert: [198, 176, 118], tundra: [148, 152, 140], taiga: [86, 108, 82],
-    rock: [126, 118, 106], snow: [240, 240, 234],
-    grid: [255, 255, 255],
+    sea: [64, 106, 126], seaDeep: [40, 70, 92], seaAbyss: [28, 50, 68], seaHi: [92, 134, 148], shoal: [110, 152, 158],
+    land: [128, 140, 96], coast: [232, 226, 205],
+    jungle: [70, 106, 62], forest: [96, 122, 74], steppe: [162, 168, 100],
+    desert: [200, 178, 120], tundra: [150, 152, 140], taiga: [90, 112, 86],
+    rock: [128, 118, 106], snow: [240, 240, 234],
+    hill: [168, 158, 104], mount: [186, 146, 98], grid: [255, 255, 255],
   },
   parchment: { // 风格 B：古籍羊皮纸
-    sea: [182, 162, 122], seaDeep: [168, 148, 108], seaHi: [196, 176, 136],
+    sea: [182, 162, 122], seaDeep: [168, 148, 108], seaAbyss: [150, 130, 96], seaHi: [196, 176, 136], shoal: [204, 182, 140],
     land: [210, 194, 150], coast: [122, 96, 64],
     jungle: [134, 148, 96], forest: [148, 154, 106], steppe: [196, 180, 130],
     desert: [216, 194, 140], tundra: [204, 200, 176], taiga: [158, 156, 112],
     rock: [172, 160, 140], snow: [236, 234, 220],
-    grid: [90, 70, 48],
+    hill: [200, 178, 128], mount: [186, 158, 112], grid: [90, 70, 48],
   },
 }
+
+const mix = (a, b, t) => a.map((v, k) => Math.round(v + (b[k] - v) * t))
 
 function render(pal, land, label) {
   const { biomes, heiArr, humArr } = genTerrain(land)
@@ -333,43 +335,57 @@ function render(pal, land, label) {
         const hei = heiArr[gi]
         let bm = biomes[gi]
         if (bm === 'snow' && Math.abs(lat) < 26) bm = 'rock' // 低纬雪线压制
-        const c = pal[bm] ?? pal.land
-        // 海拔明度微调：岩石/雪随高度渐变，其余 ±7%
-        let f = 1
-        if (bm === 'rock') f = 0.9 + hei * 0.28
-        else if (bm === 'snow') f = 1
-        else f = 0.94 + (Math.min(0.6, hei) - 0.3) * 0.18
-        ;[r, g, b] = c.map(v => Math.round(v * f))
-        // 植被材质点（噪声细斑）
+        // 气候底色（biome）
+        let col = pal[bm] ?? pal.land
+        // 海拔分层设色（hypsometric tint）：低地平坦 → 丘陵黄绿 → 山地棕 → 雪线白
+        if (hei > 0.26) col = mix(col, pal.hill, Math.min(1, (hei - 0.26) / 0.2))
+        if (hei > 0.46) col = mix(col, pal.mount, Math.min(1, (hei - 0.46) / 0.2))
+        if (hei > 0.66) col = mix(col, pal.snow, Math.min(1, (hei - 0.66) / 0.16))
+        // 微明度起伏 + 植被材质点
+        const f = 0.95 + Math.min(0.55, hei) * 0.1
+        ;[r, g, b] = col.map(v => Math.round(v * f))
         if (bm === 'forest' || bm === 'jungle' || bm === 'taiga') {
           const sp = noiseW.fbm((gx + 7.3) * 0.22, (gy + 2.9) * 0.22, 2)
-          if (sp > 0.68) { r = Math.round(r * 0.86); g = Math.round(g * 0.86); b = Math.round(b * 0.86) }
-          else if (sp < 0.3) { r = Math.round(r * 1.12); g = Math.round(g * 1.12); b = Math.round(b * 1.12) }
+          if (sp > 0.68) { r = Math.round(r * 0.88); g = Math.round(g * 0.88); b = Math.round(b * 0.88) }
+          else if (sp < 0.3) { r = Math.round(r * 1.1); g = Math.round(g * 1.1); b = Math.round(b * 1.1) }
         } else if (bm === 'desert' || bm === 'steppe') {
           const sp = noiseW.n(gx * 0.9, gy * 0.9)
-          if (sp > 0.62) { g = Math.round(g * 0.94) }
-        } else if (bm === 'rock' || bm === 'snow') {
-          // 雪岩抖点渐变
+          if (sp > 0.62) { g = Math.round(g * 0.95) }
+        } else if (bm === 'rock') {
           const sp = noiseW.n(gx * 1.3, gy * 1.3)
-          if (sp > hei * 0.5 + 0.25 && bm === 'snow') { r -= 8; g -= 8; b -= 8 }
+          if (sp > 0.55) { r -= 10; g -= 10; b -= 10 }
         }
-        // 海岸提亮（相邻逻辑格有海）
-        const isCoast =
-          !land[((gy) * 2) * W + (gx * 2 + 2)] || !land[((gy) * 2) * W + (gx * 2 - 2)] ||
-          !land[((gy * 2 + 2)) * W + (gx * 2)] || !land[((gy * 2 - 2)) * W + (gx * 2)]
-        if (isCoast) { r = pal.coast[0]; g = pal.coast[1]; b = pal.coast[2] }
       } else {
-        // 海洋深度渐变 + 波纹
-        const dd = Math.min(1, d[gy * 2 * W + gx * 2] / 26)
-        ;[r, g, b] = pal.seaDeep.map((v, k) => v + (pal.sea[k] - v) * (dd < 1 ? Math.sqrt(dd) : 0.82))
+        // 海洋 bathymetry 分层渐变（浅滩/浅海/深海/深渊）+ 波纹
+        const dd = Math.min(2.2, d[gy * 2 * W + gx * 2] / 13)
+        let col
+        if (dd < 0.18) col = mix(pal.shoal, pal.sea, dd / 0.18)
+        else if (dd < 1) col = mix(pal.sea, pal.seaDeep, (dd - 0.18) / 0.82)
+        else col = mix(pal.seaDeep, pal.seaAbyss, Math.min(1, (dd - 1) * 0.9))
+        ;[r, g, b] = col
         const wv = noiseW.n(gx * 0.35, gy * 0.35)
-        if (wv > 0.6 && dd > 0.4) { r = Math.round(r * 0.96); g = Math.round(g * 0.96); b = Math.round(b * 0.96) }
-        if (dd < 0.09 && rnd() < 0.3) { r = pal.seaHi[0]; g = pal.seaHi[1]; b = pal.seaHi[2] } // 浅滩亮斑
+        if (wv > 0.62 && dd > 0.3) { r = Math.round(r * 0.95); g = Math.round(g * 0.95); b = Math.round(b * 0.95) }
+        if (dd < 0.12 && noiseW.n(gx * 1.1, gy * 1.1) > 0.55) { r = Math.round(r * 1.06); g = Math.round(g * 1.06); b = Math.round(b * 1.06) } // 浅滩亮斑
       }
-      // 2×2 写入
-      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+      // 海岸细线：子像素级 8 邻域判定，1px 柔和暗线（无大面积高亮）
+      const gb = land[(gy * 2) * W + (gx * 2)]
+      let inSea = false // 标记当前格是否临海（用于陆地格微焰）
+      for (let dy = 0; dy < 2 && !inSea; dy++) for (let dx = 0; dx < 2; dx++) {
         const i = ((gy * 2 + dy) * W + (gx * 2 + dx)) * 4
         png.data[i] = r; png.data[i + 1] = g; png.data[i + 2] = b; png.data[i + 3] = 255
+      }
+      // 陆地临海格：整格微降饱和（暗化而非提亮）
+      if (gb) {
+        const isCoast = [gx * 2 + 2, gx * 2 - 2].some(x => x >= 0 && x < W && !land[(gy * 2) * W + x]) ||
+          [gy * 2 + 2, gy * 2 - 2].some(y => y >= 0 && y < H && !land[y * W + gx * 2])
+        if (isCoast) {
+          for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+            const i = ((gy * 2 + dy) * W + (gx * 2 + dx)) * 4
+            png.data[i] = Math.round(png.data[i] * 0.88)
+            png.data[i + 1] = Math.round(png.data[i + 1] * 0.88)
+            png.data[i + 2] = Math.round(png.data[i + 2] * 0.88)
+          }
+        }
       }
     }
   }
